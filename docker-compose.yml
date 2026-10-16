@@ -1,0 +1,31 @@
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      - DATA_DIR=/data
+    volumes:
+      - app-data:/data
+    restart: unless-stopped
+    expose:
+      - "8787"
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:
