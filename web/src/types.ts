@@ -100,3 +100,17 @@ export interface SelectResult {
   selected: SelectedItem[];
   rejected: RejectedItem[];
 }
+
+export type CaptionStyle = '混合' | '简洁' | '文艺' | '搞笑';
+
+export interface CaptionItem {
+  style: string;
+  text: string;
+}
+
+export interface UsageSummary {
+  calls: number;
+  input: number;
+  output: number;
+  costEstimate: number | null;
+}

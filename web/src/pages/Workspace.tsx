@@ -8,9 +8,12 @@ import type {
   SelectResult,
   SessionDetail,
   SessionInfo,
+  UsageSummary,
 } from '../types';
 import { PhotoThumb } from '../components/PhotoThumb';
 import { CropModal } from '../components/CropModal';
+import { CaptionPanel } from '../components/CaptionPanel';
+import { LayoutPreview } from '../components/LayoutPreview';
 
 const statusMeta: Record<PhotoStatus, { label: string; cls: string }> = {
   ready: { label: '待分析', cls: 'bg-gray-100 text-gray-500' },
@@ -24,6 +27,12 @@ const rejectCls: Record<string, string> = {
   质量问题: 'bg-red-50 text-red-500',
   内容平淡: 'bg-gray-100 text-gray-500',
 };
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
 
 export default function Workspace() {
   const [me, setMe] = useState('');
@@ -44,6 +53,7 @@ export default function Workspace() {
   const [cropId, setCropId] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<number | null>(null);
   const cropTimerRef = useRef<number | null>(null);
@@ -56,6 +66,17 @@ export default function Workspace() {
     if (d.session.model) setModel(d.session.model);
     return d;
   }, []);
+
+  const fetchUsage = useCallback(
+    async (id: string) => {
+      try {
+        setUsage(await api<UsageSummary>(`/sessions/${id}/usage`));
+      } catch {
+        // 用量显示失败不影响主流程
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void (async () => {
@@ -70,6 +91,7 @@ export default function Workspace() {
         if (saved) {
           try {
             await loadSession(saved);
+            void fetchUsage(saved);
             return;
           } catch {
             localStorage.removeItem('moments_session');
@@ -81,6 +103,7 @@ export default function Workspace() {
           localStorage.setItem('moments_session', list.sessions[0].id);
           setSessionId(list.sessions[0].id);
           await loadSession(list.sessions[0].id);
+          void fetchUsage(list.sessions[0].id);
           return;
         }
         const s = await api<SessionInfo>('/sessions', { method: 'POST', body: '{}' });
@@ -90,7 +113,7 @@ export default function Workspace() {
         setError((err as Error).message);
       }
     })();
-  }, [loadSession]);
+  }, [loadSession, fetchUsage]);
 
   useEffect(
     () => () => {
@@ -159,6 +182,7 @@ export default function Workspace() {
             stopPoll();
             setAnalyzing(false);
             await loadSession(sessionId);
+            void fetchUsage(sessionId);
             setNotice(`分析完成：成功 ${p.done} 张${p.failed ? `，失败 ${p.failed} 张（可重新点分析只跑失败项）` : ''}`);
           }
         } catch {
@@ -243,6 +267,7 @@ export default function Workspace() {
             stopCropPoll();
             setSuggesting(false);
             await loadSession(sessionId);
+            void fetchUsage(sessionId);
             setNotice(p.total === 0 ? '所有已完成分析的照片都已有构图建议' : `构图建议完成（${p.done} 张）`);
           }
         } catch {
@@ -255,26 +280,24 @@ export default function Workspace() {
     }
   }
 
-  /** 导出 zip：有推荐结果时导推荐，否则导全部已完成（AC-F9-1/2/4） */
-  async function exportZip() {
-    const ids = result
-      ? result.selected.map((s) => s.photoId)
-      : photos.filter((p) => p.status === 'done').map((p) => p.id);
-    if (!ids.length) {
+  /** 导出 zip：可指定顺序（九宫格排版顺序），否则用推荐结果/全部已完成（AC-F9-1/2/4） */
+  async function exportZip(ids?: string[]) {
+    const exportIds = ids ?? (result ? result.selected.map((s) => s.photoId) : photos.filter((p) => p.status === 'done').map((p) => p.id));
+    if (!exportIds.length) {
       setError('没有可导出的照片');
       return;
     }
     setExporting(true);
     setError('');
     try {
-      const blob = await authBlobPost(`/sessions/${sessionId}/export`, { photoIds: ids });
+      const blob = await authBlobPost(`/sessions/${sessionId}/export`, { photoIds: exportIds });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `moments-${sessionId}.zip`;
       a.click();
       URL.revokeObjectURL(url);
-      setNotice(`已导出 ${ids.length} 张（已应用二次构图的按裁剪成图打包）`);
+      setNotice(`已导出 ${exportIds.length} 张（已应用二次构图的按裁剪成图打包）`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -414,6 +437,15 @@ export default function Workspace() {
               </p>
             </div>
           )}
+          {usage && usage.calls > 0 && (
+            <span
+              className="ml-auto text-xs text-gray-400"
+              title={`模型调用 ${usage.calls} 次${usage.costEstimate != null ? `，预估费用 ¥${usage.costEstimate.toFixed(2)}` : ''}`}
+            >
+              🪙 {fmtTokens(usage.input)}↓ {fmtTokens(usage.output)}↑
+              {usage.costEstimate != null ? ` · ≈¥${usage.costEstimate.toFixed(2)}` : ''}
+            </span>
+          )}
         </div>
 
         {photos.length === 0 ? (
@@ -516,6 +548,24 @@ export default function Workspace() {
             </div>
           </section>
         )}
+
+        {photos.some((p) => p.status === 'done') && sessionId && (
+          <CaptionPanel
+            sessionId={sessionId}
+            photoIds={result?.selected.map((s) => s.photoId) ?? photos.filter((p) => p.status === 'done').map((p) => p.id)}
+            onChanged={() => sessionId && void fetchUsage(sessionId)}
+          />
+        )}
+
+        {photos.some((p) => p.status === 'done') && (
+          <LayoutPreview
+            photos={photos}
+            selectedIds={result ? result.selected.map((s) => s.photoId) : null}
+            exporting={exporting}
+            onExport={(ids) => void exportZip(ids)}
+          />
+        )}
+
         {cropId && (
           <CropModal
             photo={photos.find((p) => p.id === cropId)!}

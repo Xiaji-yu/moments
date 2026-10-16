@@ -7,6 +7,7 @@ import { CropSuggestionSchema } from './schema.js';
 import { normalizeBox, normRatio, RATIOS, type Ratio } from './cropBox.js';
 import { photoDir } from './storage.js';
 import { config } from '../config.js';
+import { recordUsage } from './usage.js';
 
 interface SuggestionRow {
   ratio: string;
@@ -52,14 +53,14 @@ export async function suggestCropForPhoto(
     hint: { filename: photo.filename },
   };
 
-  let parsed = CropSuggestionSchema.safeParse(await provider.suggestCrop({ ...input }));
+  let res = await provider.suggestCrop({ ...input });
+  let parsed = CropSuggestionSchema.safeParse(res.data);
   if (!parsed.success && !retryWithCorrection) {
-    parsed = CropSuggestionSchema.safeParse(
-      await provider.suggestCrop({
-        ...input,
-        corrective: '你上一次的输出不是合法 JSON 或字段取值不符合要求，请严格只输出符合约定的 JSON 对象。',
-      }),
-    );
+    res = await provider.suggestCrop({
+      ...input,
+      corrective: '你上一次的输出不是合法 JSON 或字段取值不符合要求，请严格只输出符合约定的 JSON 对象。',
+    });
+    parsed = CropSuggestionSchema.safeParse(res.data);
   }
   const raw = parsed.success
     ? parsed.data
@@ -78,6 +79,7 @@ export async function suggestCropForPhoto(
        ratio = excluded.ratio, box_x = excluded.box_x, box_y = excluded.box_y,
        box_w = excluded.box_w, box_h = excluded.box_h, reasoning = excluded.reasoning, model = excluded.model`,
   ).run(photoId, ratio, box.x, box.y, box.w, box.h, reasoning, input.model);
+  recordUsage(sessionId, photoId, 'crop', input.model, res.usage);
 }
 
 /** 批量为会话内照片生成构图建议（异步执行，进度用 getCropProgress 轮询） */

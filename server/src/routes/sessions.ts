@@ -12,6 +12,8 @@ import { startAnalysis, requestCancel, isRunning } from '../services/pipeline.js
 import { selectTopN } from '../services/select.js';
 import { startBatchCropSuggest, getCropProgress } from '../services/crop.js';
 import { boxToPixelExtract } from '../services/cropBox.js';
+import { generateCaptions, readCaptions, saveCaptions } from '../services/caption.js';
+import { getSessionUsage } from '../services/usage.js';
 import { ensureDir, photoDir, sessionDir } from '../services/storage.js';
 import { listProviders } from '../services/providers/registry.js';
 import { httpErr } from '../util.js';
@@ -226,13 +228,15 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       .prepare(
         `SELECT p.*, c.box_x AS c_x, c.box_y AS c_y, c.box_w AS c_w, c.box_h AS c_h
          FROM photos p LEFT JOIN crops c ON c.photo_id = p.id
-         WHERE p.session_id = ? AND p.status = 'done'
-         ORDER BY p.taken_at, p.created_at`,
+         WHERE p.session_id = ? AND p.status = 'done'`,
       )
       .all(s.id) as any[];
     if (Array.isArray(body.photoIds) && body.photoIds.length > 0) {
-      const ids = new Set<string>(body.photoIds);
-      rows = rows.filter((r) => ids.has(r.id));
+      // AC-F9-2：按传入顺序导出（与九宫格排版顺序一致）
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      rows = body.photoIds.map((id) => byId.get(id)).filter((r) => r != null);
+    } else {
+      rows = rows.sort((a, b) => (a.taken_at < b.taken_at ? -1 : 1));
     }
     if (rows.length === 0) throw httpErr(409, '没有可导出的照片');
 
@@ -258,6 +262,42 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       const safeName = String(r.filename ?? 'photo').replace(/[\\/:*?"<>|]/g, '_');
       archive.append(data, { name: `${String(i + 1).padStart(2, '0')}_${safeName.endsWith('.jpg') || safeName.endsWith('.jpeg') ? safeName : `${safeName}.jpg`}` });
     }
+    // AC-F9-1：文案一并打包
+    const captionItems = readCaptions(s.id);
+    if (captionItems && captionItems.length > 0) {
+      archive.append(captionItems.map((c) => c.text).join('\n\n'), { name: 'caption.txt' });
+    }
     await archive.finalize();
+  });
+
+  // AC-F7-1：生成文案（仅文本模型调用）
+  app.post('/:id/caption', { preHandler: authPreHandler }, async (req) => {
+    const s = ownSession(req, (req.params as { id: string }).id);
+    const body = (req.body ?? {}) as { style?: string; note?: string; photoIds?: string[] };
+    const style = (['混合', '简洁', '文艺', '搞笑'] as const).includes(body.style as never)
+      ? (body.style as '混合' | '简洁' | '文艺' | '搞笑')
+      : '混合';
+    const items = await generateCaptions(s.id, s.user_id, style, body.note, body.photoIds);
+    return { items };
+  });
+
+  app.get('/:id/caption', { preHandler: authPreHandler }, async (req) => {
+    const s = ownSession(req, (req.params as { id: string }).id);
+    return { items: readCaptions(s.id) };
+  });
+
+  // AC-F7-4：用户编辑后保存
+  app.put('/:id/caption', { preHandler: authPreHandler }, async (req) => {
+    const s = ownSession(req, (req.params as { id: string }).id);
+    const body = (req.body ?? {}) as { items?: Array<{ style?: string; text?: string }> };
+    if (!Array.isArray(body.items)) throw httpErr(400, 'items 不能为空');
+    saveCaptions(s.id, s.user_id, body.items as never);
+    return { ok: true, items: readCaptions(s.id) };
+  });
+
+  // NFR-2：token 用量与费用估算
+  app.get('/:id/usage', { preHandler: authPreHandler }, async (req) => {
+    const s = ownSession(req, (req.params as { id: string }).id);
+    return getSessionUsage(s.id);
   });
 };

@@ -6,6 +6,7 @@ import { httpErr } from '../util.js';
 import { getProvider } from './providers/registry.js';
 import { AnalysisSchema } from './schema.js';
 import { photoDir } from './storage.js';
+import { recordUsage } from './usage.js';
 
 const cancelled = new Set<string>();
 const running = new Set<string>();
@@ -68,15 +69,15 @@ async function analyzeOne(
       model: model || provider.defaultModel,
     };
 
-    let parsed = AnalysisSchema.safeParse(await provider.analyzePhoto({ ...input }));
+    let result = await provider.analyzePhoto({ ...input });
+    let parsed = AnalysisSchema.safeParse(result.data);
     if (!parsed.success) {
       // AC-F3-4：非法输出带纠错指令重试一次
-      parsed = AnalysisSchema.safeParse(
-        await provider.analyzePhoto({
-          ...input,
-          corrective: '你上一次的输出不是合法 JSON 或字段取值不符合要求，请严格只输出符合约定的 JSON 对象。',
-        }),
-      );
+      result = await provider.analyzePhoto({
+        ...input,
+        corrective: '你上一次的输出不是合法 JSON 或字段取值不符合要求，请严格只输出符合约定的 JSON 对象。',
+      });
+      parsed = AnalysisSchema.safeParse(result.data);
     }
     if (!parsed.success) throw new Error('模型输出不符合约定格式');
 
@@ -86,6 +87,7 @@ async function analyzeOne(
        VALUES (?, ?, ?, ?, ?, NULL, ?)`,
     ).run(photoId, a.score, JSON.stringify(a.tags), JSON.stringify(a.issues), a.reason, input.model);
     db.prepare(`UPDATE photos SET status = 'done' WHERE id = ?`).run(photoId);
+    recordUsage(sessionId, photoId, 'analysis', input.model, result.usage);
   } catch (err) {
     const message = String((err as Error)?.message ?? err).slice(0, 300);
     db.prepare(`UPDATE photos SET status = 'failed', error = ? WHERE id = ?`).run(message, photoId);
