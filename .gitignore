@@ -5,3 +5,8 @@ data-volume/
 .env
 *.log
 .DS_Store
+
+# 测试产物
+test-results/
+playwright-report/
+blob-report/

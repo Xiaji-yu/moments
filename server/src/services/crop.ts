@@ -18,12 +18,35 @@ interface SuggestionRow {
   reasoning: string;
 }
 
-const batchRunning = new Set<string>();
-const batchProgress = new Map<string, { total: number; done: number }>();
+export interface CropProgress {
+  running: boolean;
+  total: number;
+  done: number;
+  cancelled: boolean;
+}
 
-export function getCropProgress(sessionId: string): { running: boolean; total: number; done: number } {
-  const p = batchProgress.get(sessionId);
-  return { running: batchRunning.has(sessionId), total: p?.total ?? 0, done: p?.done ?? 0 };
+/**
+ * 批量任务进度持久化在 crop_jobs 表（而非内存 Map）：
+ * 进程重启后前端轮询仍能拿到 done/total，从而区分「完成」与「被中断」。
+ */
+export function getCropProgress(sessionId: string): CropProgress {
+  const row = db
+    .prepare('SELECT total, done, cancelled, running FROM crop_jobs WHERE session_id = ?')
+    .get(sessionId) as
+    | { total: number; done: number; cancelled: number; running: number }
+    | undefined;
+  return {
+    running: !!row?.running,
+    total: row?.total ?? 0,
+    done: row?.done ?? 0,
+    cancelled: !!row?.cancelled,
+  };
+}
+
+export function requestCancelBatchCrop(sessionId: string): void {
+  db.prepare(`UPDATE crop_jobs SET cancelled = 1, updated_at = datetime('now') WHERE session_id = ?`).run(
+    sessionId,
+  );
 }
 
 export async function suggestCropForPhoto(
@@ -82,48 +105,78 @@ export async function suggestCropForPhoto(
   recordUsage(sessionId, photoId, 'crop', input.model, res.usage);
 }
 
-/** 批量为会话内照片生成构图建议（异步执行，进度用 getCropProgress 轮询） */
+/** 批量为会话内照片生成构图建议（异步执行，进度用 getCropProgress 轮询）。
+ *  photoIds：限定只给这些照片生成（如 AI 挑图选中的若干张）；缺省为全部已完成分析的照片。 */
 export function startBatchCropSuggest(
   sessionId: string,
   userId: number,
   providerId: string,
   model: string,
   force: boolean,
+  photoIds?: string[],
 ): void {
-  if (batchRunning.has(sessionId)) throw httpErr(409, '已有构图建议任务进行中');
+  if (getCropProgress(sessionId).running) throw httpErr(409, '已有构图建议任务进行中');
+
   let photos = db
     .prepare(`SELECT id FROM photos WHERE session_id = ? AND status = 'done' ORDER BY taken_at, created_at`)
     .all(sessionId) as Array<{ id: string }>;
+  if (photoIds && photoIds.length > 0) {
+    const ids = new Set(photoIds);
+    photos = photos.filter((p) => ids.has(p.id));
+  }
   if (!force) {
+    // 跳过本会话已有建议的（crop_suggestions 没有 session_id，需 join photos 限定范围）
     const having = new Set(
-      (db.prepare('SELECT photo_id FROM crop_suggestions').all() as Array<{ photo_id: string }>).map(
-        (r) => r.photo_id,
-      ),
+      (
+        db
+          .prepare(
+            `SELECT cs.photo_id FROM crop_suggestions cs JOIN photos p ON p.id = cs.photo_id
+             WHERE p.session_id = ?`,
+          )
+          .all(sessionId) as Array<{ photo_id: string }>
+      ).map((r) => r.photo_id),
     );
     photos = photos.filter((p) => !having.has(p.id));
   }
-  if (photos.length === 0) return;
 
-  batchRunning.add(sessionId);
-  batchProgress.set(sessionId, { total: photos.length, done: 0 });
+  // 没有可生成的：复位任务记录，避免前端沿用上次的 done/total 误报「完成 N 张」
+  if (photos.length === 0) {
+    db.prepare(
+      `INSERT INTO crop_jobs (session_id, total, done, cancelled, running) VALUES (?, 0, 0, 0, 0)
+       ON CONFLICT(session_id) DO UPDATE SET
+         total = 0, done = 0, cancelled = 0, running = 0, updated_at = datetime('now')`,
+    ).run(sessionId);
+    return;
+  }
+
+  db.prepare(
+    `INSERT INTO crop_jobs (session_id, total, done, cancelled, running) VALUES (?, ?, 0, 0, 1)
+     ON CONFLICT(session_id) DO UPDATE SET
+       total = excluded.total, done = 0, cancelled = 0, running = 1, updated_at = datetime('now')`,
+  ).run(sessionId, photos.length);
+
   void (async () => {
     try {
       let cursor = 0;
       const worker = async (): Promise<void> => {
         while (cursor < photos.length) {
           const p = photos[cursor++];
+          if (getCropProgress(sessionId).cancelled) return;
           try {
             await suggestCropForPhoto(sessionId, userId, p.id, providerId, model);
           } catch {
             // 单张失败不阻塞批次
           }
-          const progress = batchProgress.get(sessionId);
-          if (progress) progress.done++;
+          db.prepare(
+            `UPDATE crop_jobs SET done = done + 1, updated_at = datetime('now') WHERE session_id = ?`,
+          ).run(sessionId);
         }
       };
       await Promise.all(Array.from({ length: Math.min(config.modelConcurrency, photos.length) }, worker));
     } finally {
-      batchRunning.delete(sessionId);
+      db.prepare(
+        `UPDATE crop_jobs SET running = 0, updated_at = datetime('now') WHERE session_id = ?`,
+      ).run(sessionId);
     }
   })();
 }

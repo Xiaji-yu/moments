@@ -10,9 +10,14 @@
     "dev:server": "npm run dev -w server",
     "dev:web": "npm run dev -w web",
     "build": "npm run build -w server && npm run build -w web",
-    "start": "node server/dist/index.js"
+    "start": "node server/dist/index.js",
+    "test": "npm run test -w server && npm run test -w web",
+    "test:server": "npm run test -w server",
+    "test:web": "npm run test -w web",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "concurrently": "^9.1.2"
   },
   "allowScripts": {

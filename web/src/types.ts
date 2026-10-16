@@ -10,6 +10,8 @@ export interface Analysis {
   tags: string[];
   issues: string[];
   reason: string;
+  /** 用户对挑图结果的反馈：1 赞 / -1 踩 / 0 无 */
+  feedback?: number;
 }
 
 export type PhotoStatus = 'ready' | 'analyzing' | 'done' | 'failed';
@@ -60,13 +62,23 @@ export interface Photo {
 
 export interface SessionInfo {
   id: string;
+  title?: string | null;
   provider: string;
   model: string | null;
+  photoCount?: number;
+  created_at?: string;
 }
 
 export interface SessionDetail {
   session: SessionInfo;
   photos: Photo[];
+}
+
+export interface CropProgress {
+  running: boolean;
+  total: number;
+  done: number;
+  cancelled: boolean;
 }
 
 export interface Progress {

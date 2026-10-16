@@ -42,9 +42,14 @@ export const mockProvider: VisionProvider = {
     const t2 = TAG_POOL[seed[2] % TAG_POOL.length];
     const tags = [...new Set([t1, t2])];
     const issues = seed[3] < 46 ? [ISSUE_VALUES[seed[4] % ISSUE_VALUES.length]] : [];
+    // 评语与分数联动，避免「低分却好评」的误导
     const reason = issues.length
       ? `画面存在${issues.join('、')}问题，质量欠佳。`
-      : `${tags.join('、')}主题明确，光线与构图状态不错，适合发朋友圈。`;
+      : score >= 7
+        ? `${tags.join('、')}主题明确，光线与构图状态不错，适合发朋友圈。`
+        : score >= 5
+          ? `${tags.join('、')}主题尚可，整体中规中矩，还有提升空间。`
+          : `${tags.join('、')}主体不够突出，画面平淡，不建议直接发出。`;
     return { data: { score, tags, issues, reason }, usage: fakeUsage() };
   },
 

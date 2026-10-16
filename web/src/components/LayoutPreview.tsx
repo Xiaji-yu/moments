@@ -8,12 +8,17 @@ interface Props {
   selectedIds: string[] | null;
   exporting: boolean;
   onExport: (orderedIds: string[]) => void;
+  /** 按当前排版导出单张九宫格拼图 */
+  onExportGrid?: (orderedIds: string[]) => void;
 }
 
 const TEMPLATES = [1, 3, 4, 9] as const;
 
+/** 模板张数 → 拼图列数（1/3/4/9 → 1/3/2/3） */
+const TEMPLATE_COLS: Record<number, number> = { 1: 1, 3: 3, 4: 2, 9: 3 };
+
 /** 朋友圈排版预览：1/3/4/9 模板 + 拖拽/点选交换 + 按此顺序导出（AC-F8-1~4） */
-export function LayoutPreview({ photos, selectedIds, exporting, onExport }: Props) {
+export function LayoutPreview({ photos, selectedIds, exporting, onExport, onExportGrid }: Props) {
   const [template, setTemplate] = useState<number>(9);
   const [order, setOrder] = useState<string[]>([]);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -118,7 +123,17 @@ export function LayoutPreview({ photos, selectedIds, exporting, onExport }: Prop
         </p>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {onExportGrid && (
+          <button
+            onClick={() => onExportGrid(order.slice(0, template).filter((id): id is string => !!id))}
+            disabled={exporting || filled === 0}
+            title="把当前排版拼成一张大图（发朋友圈单图用）"
+            className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition hover:bg-blue-100 disabled:opacity-40"
+          >
+            {exporting ? '打包中…' : `🖼 导出拼图（${TEMPLATE_COLS[template]} 列）`}
+          </button>
+        )}
         <button
           onClick={() => onExport(order.slice(0, template).filter((id): id is string => !!id))}
           disabled={exporting || filled === 0}

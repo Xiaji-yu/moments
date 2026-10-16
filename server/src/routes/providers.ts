@@ -34,7 +34,9 @@ export const providerRoutes: FastifyPluginAsync = async (app) => {
       });
       return { ok: true, latencyMs: Date.now() - t0, model: cfg.defaultModel };
     } catch (err) {
-      return reply.code(502).send({ ok: false, error: String((err as Error).message ?? err) });
+      req.log.warn({ err, provider: cfg.id }, 'provider connectivity test failed');
+      // 不透传供应商原始错误（可能含 Key/内部细节），只给可操作提示
+      return reply.code(502).send({ ok: false, error: '连通性测试失败，请检查 API Key、网络与模型名称' });
     }
   });
 };

@@ -1,4 +1,7 @@
 import path from 'node:path';
+import { loadDotEnv } from './env.js';
+
+loadDotEnv(); // 本地 dev 加载项目根 .env（Docker 场景变量已注入，不会覆盖）
 
 const env = process.env;
 
