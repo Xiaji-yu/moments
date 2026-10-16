@@ -18,7 +18,11 @@ export async function registerUser(page: Page): Promise<string> {
   await page.getByPlaceholder('用户名（3~20 位字母/数字/下划线）').fill(username);
   await page.getByPlaceholder('密码（≥8 位，含字母和数字）').fill('passw0rd1');
   await page.getByRole('button', { name: '注册并进入' }).click();
-  // 进入工作区：出现上传引导
+  // 等工作区初始化完成：会话 id 落入 localStorage 后才算就绪。
+  // 否则上传区虽已渲染，sessionId 仍为空，上传会被静默忽略（竞态）。
+  await page.waitForFunction(() => !!localStorage.getItem('moments_session'), null, {
+    timeout: 30_000,
+  });
   await expect(page.getByText(/拖拽照片到这里/)).toBeVisible({ timeout: 30_000 });
   return username;
 }

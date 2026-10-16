@@ -12,7 +12,10 @@ interface Props {
 }
 
 function labelOf(s: SessionInfo): string {
-  return s.title?.trim() || `${new Date(s.created_at ?? Date.now()).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 的会话`;
+  return (
+    s.title?.trim() ||
+    `${new Date(s.created_at ?? Date.now()).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 的会话`
+  );
 }
 
 /** 会话管理侧栏：列表 / 切换 / 新建 / 重命名 / 删除 */
@@ -73,35 +76,38 @@ export function SessionSidebar({ currentId, onSelect, onCreated, onClose }: Prop
   }
 
   return (
-    <aside className="flex h-full w-72 flex-col border-r border-gray-200 bg-white">
-      <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <h2 className="font-semibold">会话</h2>
+    <aside className="flex h-full w-72 flex-col border-r border-line bg-paper">
+      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+        <span className="mono text-muted">SESSIONS</span>
         <div className="flex-1" />
-        <button onClick={onClose} className="text-gray-400 transition hover:text-gray-700 lg:hidden" title="收起">
+        <button
+          onClick={onClose}
+          className="mono text-muted transition-colors hover:text-ink lg:hidden"
+          title="收起"
+        >
           ✕
         </button>
       </div>
 
-      <div className="px-3 py-2">
-        <button
-          onClick={() => void create()}
-          className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
-        >
-          ＋ 新建会话
+      <div className="px-3 py-3">
+        <button onClick={() => void create()} className="btn btn--solid w-full">
+          <span>＋ 新建会话</span>
         </button>
       </div>
 
-      {error && <p className="px-4 pb-2 text-xs text-red-500">{error}</p>}
-      {loading && <p className="px-4 pb-2 text-xs text-gray-400">加载中…</p>}
+      {error && <p className="px-4 pb-2 text-xs text-ink">{error}</p>}
+      {loading && <p className="mono px-4 pb-2 text-muted">LOADING…</p>}
 
-      <ul className="flex-1 space-y-1 overflow-auto px-2 pb-3">
+      <ul className="flex-1 space-y-0 overflow-auto border-t border-line-soft px-2 pb-3">
         {sessions.map((s) => (
           <li
             key={s.id}
-            className={`group rounded-lg px-2 py-2 text-sm transition ${
-              s.id === currentId ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-50'
+            className={`group relative border-b border-line-soft px-2 py-2.5 transition-colors duration-300 ${
+              s.id === currentId ? 'bg-paper-2' : 'hover:bg-paper-2'
             }`}
           >
+            {/* 当前会话：左侧墨条 */}
+            {s.id === currentId && <span className="absolute inset-y-0 left-0 w-[2px] bg-ink" aria-hidden />}
             {editingId === s.id ? (
               <div className="flex items-center gap-1">
                 <input
@@ -114,34 +120,51 @@ export function SessionSidebar({ currentId, onSelect, onCreated, onClose }: Prop
                   }}
                   maxLength={40}
                   placeholder="给会话起个名字"
-                  className="min-w-0 flex-1 rounded border border-gray-300 px-1.5 py-1 text-xs outline-none focus:border-blue-500"
+                  className="field min-w-0 flex-1 px-1.5 py-1 text-xs"
                 />
-                <button onClick={() => void rename(s.id)} className="text-xs text-blue-600 hover:text-blue-700">
+                <button
+                  onClick={() => void rename(s.id)}
+                  className="mono text-ink transition-colors hover:text-muted"
+                >
                   保存
                 </button>
               </div>
             ) : (
               <button onClick={() => onSelect(s.id)} className="block w-full text-left" title="切换到该会话">
-                <span className="block truncate font-medium text-gray-700">{labelOf(s)}</span>
-                <span className="mt-0.5 block text-[11px] text-gray-400">
+                <span
+                  className={`block truncate text-[13px] font-medium ${
+                    s.id === currentId ? 'text-ink' : 'text-ink-soft'
+                  }`}
+                >
+                  {labelOf(s)}
+                </span>
+                <span className="mono mt-1 block text-[9px] text-muted">
                   {s.photoCount ?? 0} 张 · {s.provider}
                   {s.model ? ` · ${s.model}` : ''}
                 </span>
+                {s.id === currentId && (
+                  <span className="mono mt-1 inline-block border border-ink px-1.5 py-0.5 text-[8px] text-ink">
+                    CURRENT
+                  </span>
+                )}
               </button>
             )}
 
             {editingId !== s.id && (
-              <div className="mt-1 flex gap-2 opacity-0 transition group-hover:opacity-100">
+              <div className="mono mt-1.5 flex gap-3 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                 <button
                   onClick={() => {
                     setEditingId(s.id);
                     setDraftTitle(s.title ?? '');
                   }}
-                  className="text-[11px] text-gray-400 hover:text-blue-600"
+                  className="text-[9px] text-muted transition-colors hover:text-ink"
                 >
                   重命名
                 </button>
-                <button onClick={() => void remove(s.id)} className="text-[11px] text-gray-400 hover:text-red-500">
+                <button
+                  onClick={() => void remove(s.id)}
+                  className="text-[9px] text-muted transition-colors hover:text-ink"
+                >
                   删除
                 </button>
               </div>

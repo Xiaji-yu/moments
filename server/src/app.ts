@@ -28,7 +28,11 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<ReturnType<t
   });
 
   await app.register(cors, { origin: true });
-  if (opts.rateLimit !== false) {
+  // 路由级限速：默认开启；E2E 等场景可用 RATE_LIMIT_ENABLED=false 关闭
+  // （限速行为本身由 server/test/integration/auth.rate-limit.test.ts 专项覆盖）
+  const rateLimitOn =
+    opts.rateLimit !== false && (process.env.RATE_LIMIT_ENABLED ?? 'true') !== 'false';
+  if (rateLimitOn) {
     await app.register(rateLimit, { global: false });
   }
   await app.register(multipart, {

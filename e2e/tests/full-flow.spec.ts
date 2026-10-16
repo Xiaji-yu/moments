@@ -105,11 +105,12 @@ test('挑图反馈 👍 刷新后保持（反馈闭环持久化）', async ({ pa
   await expect(page.getByText(/🏆 AI 推荐/)).toBeVisible({ timeout: 30_000 });
 
   await page.getByTitle('挑得好，以后多来点').first().click();
-  await expect(page.getByTitle('挑得好，以后多来点').first()).toHaveClass(/bg-blue-100/);
+  await expect(page.getByTitle('挑得好，以后多来点').first()).toHaveClass(/bg-ink/, { timeout: 10_000 });
 
-  // 刷新后从后端恢复，反馈应仍在
+  // 刷新后从后端恢复，反馈应仍在（先等工作区初始化完成，避免竞态）
   await page.reload();
-  await expect(page.getByTitle('挑得好，以后多来点').first()).toHaveClass(/bg-blue-100/, {
+  await expect(page.getByText(/拖拽照片到这里/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTitle('挑得好，以后多来点').first()).toHaveClass(/bg-ink/, {
     timeout: 30_000,
   });
 });

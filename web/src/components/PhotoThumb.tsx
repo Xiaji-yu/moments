@@ -25,6 +25,6 @@ export function PhotoThumb({ photoId }: Props) {
     };
   }, [photoId]);
 
-  if (!url) return <div className="h-full w-full animate-pulse bg-gray-200" />;
+  if (!url) return <div className="h-full w-full animate-pulse bg-paper-2" />;
   return <img src={url} alt="" className="h-full w-full object-cover" draggable={false} />;
 }

@@ -182,25 +182,24 @@ export function CropModal({ photo, onClose }: Props) {
     ratio !== photo.crop.ratio ||
     !boxSame(box, photo.crop.box);
 
-  const btn =
-    'rounded-lg px-3 py-1.5 text-sm transition disabled:opacity-40';
-  const btnGhost = `${btn} border border-gray-300 text-gray-600 hover:bg-gray-50`;
-  const btnPrimary = `${btn} bg-blue-600 text-white hover:bg-blue-700`;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => onClose(false)}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-4" onClick={() => onClose(false)}>
       <div
-        className="max-h-[94vh] w-full max-w-4xl space-y-3 overflow-auto rounded-xl bg-white p-4"
+        className="panel max-h-[94vh] w-full max-w-4xl space-y-4 overflow-auto p-5"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 border-b border-line pb-3">
           <div className="min-w-0">
-            <h2 className="truncate font-semibold">✂ 二次构图 · {photo.filename}</h2>
-            <p className="text-xs text-gray-500">
+            <p className="mono text-muted">CROP · RECOMPOSE</p>
+            <h2 className="mt-1 truncate text-lg font-semibold tracking-[-0.02em]">✂ 二次构图 · {photo.filename}</h2>
+            <p className="mt-1 text-xs text-ink-soft">
               {suggestion ? `AI 建议：${suggestion.reasoning}` : '暂无 AI 建议，可手动裁剪或点击「生成 AI 建议」'}
             </p>
           </div>
-          <button onClick={() => onClose(false)} className="text-gray-400 hover:text-gray-700">
+          <button
+            onClick={() => onClose(false)}
+            className="mono border border-line px-2 py-1 text-muted transition-colors duration-300 hover:bg-ink hover:text-paper"
+          >
             ✕
           </button>
         </div>
@@ -208,7 +207,7 @@ export function CropModal({ photo, onClose }: Props) {
         <div className="flex justify-center">
           <div
             ref={overlayRef}
-            className="relative touch-none select-none"
+            className="relative touch-none select-none border border-line"
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -229,20 +228,20 @@ export function CropModal({ photo, onClose }: Props) {
             {imgSize && (
               <>
                 {/* 框外遮罩 */}
-                <div className="pointer-events-none absolute inset-x-0 top-0 bg-black/50" style={{ height: `${box.y * 100}%` }} />
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/50" style={{ height: `${(1 - box.y - box.h) * 100}%` }} />
-                <div className="pointer-events-none absolute bg-black/50" style={{ left: 0, top: `${box.y * 100}%`, width: `${box.x * 100}%`, height: `${box.h * 100}%` }} />
-                <div className="pointer-events-none absolute bg-black/50" style={{ left: `${(box.x + box.w) * 100}%`, top: `${box.y * 100}%`, right: 0, height: `${box.h * 100}%` }} />
+                <div className="pointer-events-none absolute inset-x-0 top-0 bg-ink/40" style={{ height: `${box.y * 100}%` }} />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-ink/40" style={{ height: `${(1 - box.y - box.h) * 100}%` }} />
+                <div className="pointer-events-none absolute bg-ink/40" style={{ left: 0, top: `${box.y * 100}%`, width: `${box.x * 100}%`, height: `${box.h * 100}%` }} />
+                <div className="pointer-events-none absolute bg-ink/40" style={{ left: `${(box.x + box.w) * 100}%`, top: `${box.y * 100}%`, right: 0, height: `${box.h * 100}%` }} />
                 {/* 裁剪框 + 三分线 */}
                 <div
                   data-role="box"
-                  className="absolute cursor-move border-2 border-blue-400 shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+                  className="absolute cursor-move border-2 border-ink shadow-[0_0_0_1px_rgba(245,244,241,0.9)]"
                   style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%` }}
                 >
-                  <div className="pointer-events-none absolute left-1/3 top-0 h-full w-px bg-white/40" />
-                  <div className="pointer-events-none absolute left-2/3 top-0 h-full w-px bg-white/40" />
-                  <div className="pointer-events-none absolute top-1/3 left-0 w-full h-px bg-white/40" />
-                  <div className="pointer-events-none absolute top-2/3 left-0 w-full h-px bg-white/40" />
+                  <div className="pointer-events-none absolute left-1/3 top-0 h-full w-px bg-white/50" />
+                  <div className="pointer-events-none absolute left-2/3 top-0 h-full w-px bg-white/50" />
+                  <div className="pointer-events-none absolute top-1/3 left-0 h-px w-full bg-white/50" />
+                  <div className="pointer-events-none absolute top-2/3 left-0 h-px w-full bg-white/50" />
                 </div>
                 {/* 角部缩放 handle */}
                 {(
@@ -252,15 +251,16 @@ export function CropModal({ photo, onClose }: Props) {
                     ['sw', 'left', 'bottom', 'nesw-resize'],
                     ['se', 'right', 'bottom', 'nwse-resize'],
                   ] as const
-                ).map(([h, l, t, cursor]) => (
+                ).map(([h, l, t]) => (
                   <div
                     key={h}
                     data-handle={h}
-                    className={`absolute h-4 w-4 rounded-full border-2 border-blue-500 bg-white ${cursor === 'nwse-resize' ? 'cursor-nwse-resize' : 'cursor-nesw-resize'}`}
+                    className="absolute h-4 w-4 rounded-full border-2 border-ink bg-paper"
                     style={{
                       [l]: `${(l === 'left' ? box.x : box.x + box.w) * 100}%`,
                       [t]: `${(t === 'top' ? box.y : box.y + box.h) * 100}%`,
                       transform: 'translate(-50%, -50%)',
+                      cursor: `${t}-resize`,
                     }}
                   />
                 ))}
@@ -269,35 +269,41 @@ export function CropModal({ photo, onClose }: Props) {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-gray-400">比例</span>
+        <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-3">
+          <span className="mono text-muted">RATIO</span>
           {RATIO_LIST.map((rt) => (
             <button
               key={rt}
               onClick={() => switchRatio(rt)}
-              className={`${btn} ${ratio === rt ? 'bg-blue-50 font-medium text-blue-700 ring-1 ring-blue-300' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+              className={`mono border px-2.5 py-1 text-[10px] transition-colors duration-300 ${
+                ratio === rt
+                  ? 'border-ink bg-ink text-paper'
+                  : 'border-line-soft text-ink-soft hover:border-ink hover:text-ink'
+              }`}
             >
               {RATIO_LABEL[rt]}
             </button>
           ))}
           <div className="flex-1" />
-          {imgSize && <span className="text-xs text-gray-500">导出 {boxPixelText(box, imgSize.nw, imgSize.nh)}</span>}
+          {imgSize && (
+            <span className="mono text-muted">导出 {boxPixelText(box, imgSize.nw, imgSize.nh)}</span>
+          )}
         </div>
 
-        {error && <p className="text-xs text-red-500">{error}</p>}
+        {error && <p className="border-l-2 border-ink pl-2 text-xs text-ink">{error}</p>}
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+        <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-3">
           {suggestion ? (
-            <button className={btnGhost} onClick={applySuggestion}>
-              应用 AI 建议
+            <button className="btn btn--sm" onClick={applySuggestion}>
+              <span>应用 AI 建议</span>
             </button>
           ) : (
-            <button className={btnGhost} onClick={() => void generateSuggestion()} disabled={suggesting}>
-              {suggesting ? '生成中…' : '生成 AI 建议'}
+            <button className="btn btn--sm" onClick={() => void generateSuggestion()} disabled={suggesting}>
+              <span>{suggesting ? '生成中…' : '生成 AI 建议'}</span>
             </button>
           )}
           <button
-            className={btnGhost}
+            className="btn btn--sm"
             onClick={() => {
               if (suggestion) applySuggestion();
               else {
@@ -309,24 +315,24 @@ export function CropModal({ photo, onClose }: Props) {
             disabled={!suggestion}
             title={suggestion ? '回到 AI 建议的框' : '暂无建议'}
           >
-            重置
+            <span>重置</span>
           </button>
           <button
-            className={btnGhost}
+            className="btn btn--sm"
             onClick={() => {
               setRatio('original');
               setBox(FULL_BOX);
               setSource('original');
             }}
           >
-            还原原始
+            <span>还原原始</span>
           </button>
           <div className="flex-1" />
-          <button className={btnGhost} onClick={() => onClose(false)}>
-            取消
+          <button className="btn btn--sm" onClick={() => onClose(false)}>
+            <span>取消</span>
           </button>
-          <button className={btnPrimary} onClick={() => void save()} disabled={saving || !imgSize || !dirty}>
-            {saving ? '保存中…' : '保存并应用'}
+          <button className="btn btn--solid btn--sm" onClick={() => void save()} disabled={saving || !imgSize || !dirty}>
+            <span>{saving ? '保存中…' : '保存并应用'}</span>
           </button>
         </div>
       </div>

@@ -40,8 +40,10 @@ export function FeedbackButtons({ photoId, value, onChanged }: Props) {
       }}
       disabled={busy}
       title={title}
-      className={`rounded px-1 py-0.5 text-[11px] transition disabled:opacity-40 ${
-        value === v ? 'bg-blue-100 text-blue-700' : 'text-gray-300 hover:bg-gray-100 hover:text-gray-500'
+      className={`mono border px-1.5 py-0.5 text-[9px] transition-colors duration-300 disabled:opacity-40 ${
+        value === v
+          ? 'border-ink bg-ink text-paper'
+          : 'border-line-soft text-muted hover:border-ink hover:text-ink'
       }`}
     >
       {label}
@@ -49,8 +51,8 @@ export function FeedbackButtons({ photoId, value, onChanged }: Props) {
   );
 
   return (
-    <div className="flex items-center gap-0.5">
-      {btn(1, '👍', '挑得好，以后多来点')}
+    <div className="flex items-center gap-1">
+      {btn(1, '👍 挑得好', '挑得好，以后多来点')}
       {btn(-1, '👎', '挑得不好')}
     </div>
   );

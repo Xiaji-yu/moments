@@ -18,17 +18,19 @@ import { LayoutPreview } from '../components/LayoutPreview';
 import { FeedbackButtons } from '../components/FeedbackButtons';
 import { SessionSidebar } from '../components/SessionSidebar';
 
+/* 状态徽标：空心 / 实心 / 描边 / 反色 四档墨色编码 */
 const statusMeta: Record<PhotoStatus, { label: string; cls: string }> = {
-  ready: { label: '待分析', cls: 'bg-gray-100 text-gray-500' },
-  analyzing: { label: '分析中', cls: 'bg-blue-100 text-blue-600 animate-pulse' },
-  done: { label: '完成', cls: 'bg-green-100 text-green-700' },
-  failed: { label: '失败', cls: 'bg-red-100 text-red-600' },
+  ready: { label: '待分析', cls: 'border border-line-soft text-muted' },
+  analyzing: { label: '分析中', cls: 'border-2 border-ink text-ink animate-pulse' },
+  done: { label: '完成', cls: 'border border-ink text-ink' },
+  failed: { label: '失败', cls: 'bg-ink text-paper' },
 };
 
+/* 落选原因：三档墨色编码 */
 const rejectCls: Record<string, string> = {
-  重复: 'bg-orange-50 text-orange-600',
-  质量问题: 'bg-red-50 text-red-500',
-  内容平淡: 'bg-gray-100 text-gray-500',
+  重复: 'bg-ink text-paper',
+  质量问题: 'border border-ink text-ink',
+  内容平淡: 'border border-line-soft text-muted',
 };
 
 function fmtTokens(n: number): string {
@@ -175,7 +177,11 @@ export default function Workspace() {
   }
 
   async function uploadFiles(files: File[]) {
-    if (!files.length || !sessionId) return;
+    if (!files.length) return;
+    if (!sessionId) {
+      setError('会话正在初始化，请稍候再试');
+      return;
+    }
     setUploading(true);
     setUploadPct(0);
     setError('');
@@ -437,23 +443,21 @@ export default function Workspace() {
   const progressPct =
     progress && progress.total ? Math.round(((progress.done + progress.failed) / progress.total) * 100) : 0;
   const currentModels = providers.find((p) => p.id === providerId)?.models ?? [];
-  const selectCls =
-    'rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-500';
-  const btnBase = 'rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-40';
-  const btnGhost = `${btnBase} border border-gray-300 text-gray-600 hover:bg-gray-50`;
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      {/* 侧边栏：小屏抽屉，桌面常驻 */}
+    <div className="flex min-h-screen bg-paper">
+      {/* 侧边栏：小屏抽屉，桌面常驻（sticky + h-screen，滚动看照片时导航不消失） */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/40 lg:hidden"
+          className="fixed inset-0 z-20 bg-ink/40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-hidden
         />
       )}
       <div
-        className={`fixed inset-y-0 left-0 z-30 lg:static lg:z-auto ${sidebarOpen ? 'block' : 'hidden'}`}
+        className={`fixed inset-y-0 left-0 z-30 lg:sticky lg:top-0 lg:z-auto lg:h-screen ${
+          sidebarOpen ? 'block' : 'hidden'
+        }`}
       >
         <SessionSidebar
           currentId={sessionId}
@@ -470,19 +474,24 @@ export default function Workspace() {
       </div>
 
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-10 border-b border-gray-200 bg-white">
-          <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
+        <header className="sticky top-0 z-10 border-b border-line bg-paper">
+          <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 lg:px-8">
             <button
               onClick={() => setSidebarOpen((v) => !v)}
               title="会话列表"
-              className="rounded px-2 py-1 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+              className="border border-line px-2 py-1 text-ink transition-colors duration-300 hover:bg-ink hover:text-paper"
             >
               ☰
             </button>
-            <span className="text-lg font-bold">📷 Moments</span>
-            <span className="hidden text-sm text-gray-400 sm:inline">AI 朋友圈选图</span>
+            <span className="text-lg font-semibold tracking-[-0.02em]">📷 Moments</span>
+            <span className="mono hidden text-muted sm:inline">AI PHOTO CURATION</span>
             <div className="flex-1" />
-            <select value={providerId} onChange={(e) => switchProvider(e.target.value)} className={selectCls}>
+            <select
+              value={providerId}
+              onChange={(e) => switchProvider(e.target.value)}
+              className="field mono w-auto py-1.5 text-[11px]"
+              aria-label="模型供应商"
+            >
               {providers.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
@@ -492,7 +501,8 @@ export default function Workspace() {
             <select
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              className={`${selectCls} hidden sm:block`}
+              className="field mono hidden w-auto py-1.5 text-[11px] sm:block"
+              aria-label="模型"
             >
               {currentModels.map((m) => (
                 <option key={m} value={m}>
@@ -500,25 +510,22 @@ export default function Workspace() {
                 </option>
               ))}
             </select>
-            <span className="hidden text-sm text-gray-500 md:inline">{me}</span>
-            <button onClick={logout} className="text-sm text-gray-400 transition hover:text-gray-700">
+            <span className="mono hidden text-muted md:inline">{me}</span>
+            <button onClick={logout} className="mono text-muted transition-colors hover:text-ink">
               退出
             </button>
           </div>
         </header>
 
-        <main className="mx-auto max-w-6xl space-y-6 px-4 py-6">
+        <main className="mx-auto max-w-6xl space-y-10 px-4 py-8 lg:px-8">
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-              {error}
-            </div>
+            <div className="border-l-2 border-ink bg-paper-2 px-4 py-3 text-sm text-ink">{error}</div>
           )}
           {notice && !analyzing && (
-            <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-              {notice}
-            </div>
+            <div className="border-l-2 border-ink bg-paper-2 px-4 py-3 text-sm text-ink">{notice}</div>
           )}
 
+          {/* 导入区 */}
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -528,12 +535,12 @@ export default function Workspace() {
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
-              void uploadFiles(Array.from(e.dataTransfer.files));
+              if (sessionId) void uploadFiles(Array.from(e.dataTransfer.files));
             }}
-            onClick={() => fileRef.current?.click()}
-            className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition ${
-              dragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-            }`}
+            onClick={() => sessionId && fileRef.current?.click()}
+            className={`border-2 border-dashed p-10 text-center transition-colors duration-300 ${
+              sessionId ? 'cursor-pointer' : 'cursor-wait opacity-60'
+            } ${dragOver ? 'border-ink bg-paper-2' : 'border-line-soft hover:border-ink'}`}
           >
             <input
               ref={fileRef}
@@ -543,65 +550,69 @@ export default function Workspace() {
               className="hidden"
               onChange={(e) => void uploadFiles(Array.from(e.target.files ?? []))}
             />
-            <p className="text-gray-600">
-              {uploading
-                ? uploadPct != null
-                  ? `上传中… ${uploadPct}%`
-                  : '上传处理中…'
-                : '拖拽照片到这里，或点击选择（单次 ≤ 30 张，支持 iPhone HEIC / JPG / PNG / WebP）'}
+            <p className="mono text-muted">{sessionId ? 'DROP / SELECT' : 'INITIALIZING'}</p>
+            <p className="mt-2 text-[15px] text-ink">
+              {!sessionId
+                ? '正在初始化会话…'
+                : uploading
+                  ? uploadPct != null
+                    ? `上传中… ${uploadPct}%`
+                    : '上传处理中…'
+                  : '拖拽照片到这里，或点击选择（单次 ≤ 30 张，支持 iPhone HEIC / JPG / PNG / WebP）'}
             </p>
             {uploading && uploadPct != null && (
-              <div className="mx-auto mt-3 h-2 w-64 overflow-hidden rounded-full bg-gray-200">
-                <div className="h-full bg-blue-500 transition-all" style={{ width: `${uploadPct}%` }} />
+              <div className="mx-auto mt-4 h-1 w-64 border border-line-soft">
+                <div className="h-full bg-ink transition-all" style={{ width: `${uploadPct}%` }} />
               </div>
             )}
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-2 text-xs text-muted">
               拍摄时间、连拍信息只用于排序与聚类，GPS 等隐私数据不会保留
             </p>
           </div>
 
+          {/* 操作区 */}
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => void startAnalyze()}
               disabled={!photos.length || analyzing || busy}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-40"
+              className="btn btn--solid"
             >
-              {analyzing ? '分析中…' : `开始 AI 分析（${photos.length} 张）`}
+              <span>{analyzing ? '分析中…' : `开始 AI 分析（${photos.length} 张）`}</span>
             </button>
             {failedCount > 0 && !analyzing && (
               <button
                 onClick={() => void startAnalyze({ retryFailed: true })}
                 disabled={busy}
-                className={btnGhost}
+                className="btn"
                 title="只重新分析未完成的照片，已完成的不会重复花费"
               >
-                ↻ 重试失败项（{failedCount}）
+                <span>↻ 重试失败项（{failedCount}）</span>
               </button>
             )}
             {analyzing && (
-              <button
-                onClick={() => void cancelAnalyze()}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-50"
-              >
-                取消
+              <button onClick={() => void cancelAnalyze()} className="btn">
+                <span>取消</span>
               </button>
             )}
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-500">推荐张数</label>
-              <select value={n} onChange={(e) => setN(Number(e.target.value))} className={selectCls}>
-                {[1, 3, 4, 6, 9].map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <label className="mono ml-2 text-muted">TOP N</label>
+            <select
+              value={n}
+              onChange={(e) => setN(Number(e.target.value))}
+              className="field mono w-auto py-1.5 text-[11px]"
+              aria-label="推荐张数"
+            >
+              {[1, 3, 4, 6, 9].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
             <button
               onClick={() => void pick()}
               disabled={!analyzedAll || analyzing || busy}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-40"
+              className="btn btn--solid"
             >
-              AI 挑图
+              <span>AI 挑图</span>
             </button>
             <button
               onClick={() => void suggestCrops()}
@@ -611,44 +622,45 @@ export default function Workspace() {
                   ? `只为 AI 推荐的 ${result.selected.length} 张生成二次构图建议`
                   : '为已完成分析、还没有建议的照片生成二次构图建议'
               }
-              className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 disabled:opacity-40"
+              className="btn"
             >
-              {suggesting
-                ? `生成构图建议中…（${cropProgress?.done ?? 0}/${cropProgress?.total ?? 0}）`
-                : result
-                  ? `✂ 为推荐 ${result.selected.length} 张生成构图`
-                  : '✂ 生成构图建议'}
+              <span>
+                {suggesting
+                  ? `生成构图建议中…（${cropProgress?.done ?? 0}/${cropProgress?.total ?? 0}）`
+                  : result
+                    ? `✂ 为推荐 ${result.selected.length} 张生成构图`
+                    : '✂ 生成构图建议'}
+              </span>
             </button>
             {suggesting && (
-              <button
-                onClick={() => void cancelCrops()}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-50"
-              >
-                取消构图
+              <button onClick={() => void cancelCrops()} className="btn">
+                <span>取消构图</span>
               </button>
             )}
             <button
               onClick={() => void exportZip()}
               disabled={exporting || analyzing || (!result && !photos.some((p) => p.status === 'done'))}
               title={result ? '导出 AI 推荐的照片（zip）' : '导出全部已完成分析的照片（zip）'}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-40"
+              className="btn"
             >
-              {exporting ? '打包中…' : result ? `⬇ 导出推荐 ${result.selected.length} 张` : '⬇ 导出 zip'}
+              <span>
+                {exporting ? '打包中…' : result ? `⬇ 导出推荐 ${result.selected.length} 张` : '⬇ 导出 zip'}
+              </span>
             </button>
             {analyzing && progress && (
               <div className="min-w-48 flex-1">
-                <div className="h-2 overflow-hidden rounded-full bg-gray-200">
-                  <div className="h-full bg-blue-500 transition-all" style={{ width: `${progressPct}%` }} />
+                <div className="h-1 border border-line-soft">
+                  <div className="h-full bg-ink transition-all" style={{ width: `${progressPct}%` }} />
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mono mt-1.5 text-muted">
                   {progress.done + progress.failed}/{progress.total}
-                  {progress.failed ? ` · 失败 ${progress.failed}` : ''}
+                  {progress.failed ? ` · FAILED ${progress.failed}` : ''}
                 </p>
               </div>
             )}
             {usage && usage.calls > 0 && (
               <span
-                className="ml-auto text-xs text-gray-400"
+                className="mono ml-auto text-muted"
                 title={`模型调用 ${usage.calls} 次${usage.costEstimate != null ? `，预估费用 ¥${usage.costEstimate.toFixed(2)}` : ''}`}
               >
                 🪙 {fmtTokens(usage.input)}↓ {fmtTokens(usage.output)}↑
@@ -657,14 +669,15 @@ export default function Workspace() {
             )}
           </div>
 
+          {/* 照片网格：无缝边框拼出的表格感 */}
           {photos.length === 0 ? (
-            <p className="py-10 text-center text-gray-400">还没有照片，先导入一批吧</p>
+            <p className="mono py-16 text-center text-muted">NO PHOTOS · 先导入一批吧</p>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <div className="grid grid-cols-2 border-l border-t border-line sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {photos.map((p) => (
                 <div
                   key={p.id}
-                  className="group relative overflow-hidden rounded-lg border border-gray-200 bg-white"
+                  className="group relative border-r border-b border-line bg-paper transition-colors duration-300 hover:bg-paper-2"
                 >
                   <div className="aspect-square">
                     <PhotoThumb photoId={p.id} />
@@ -672,25 +685,21 @@ export default function Workspace() {
                   <button
                     onClick={() => setCropId(p.id)}
                     title="二次构图"
-                    className="absolute top-1 left-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/40 text-xs text-white transition hover:bg-black/70"
+                    className="absolute top-1 left-1 flex h-6 w-6 items-center justify-center border border-line bg-paper text-xs text-ink transition-colors duration-300 hover:bg-ink hover:text-paper"
                   >
                     ✂
                   </button>
                   <button
                     onClick={() => void removePhoto(p.id)}
                     title="删除"
-                    className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/40 text-xs text-white transition hover:bg-black/70"
+                    className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center border border-line bg-paper text-xs text-ink transition-colors duration-300 hover:bg-ink hover:text-paper"
                   >
                     ×
                   </button>
                   {p.crop ? (
                     <span
-                      title={
-                        p.crop.source === 'ai' ? '已应用 LLM 的二次构图建议' : '手动调整的二次构图'
-                      }
-                      className={`absolute bottom-1 left-1 rounded px-1.5 py-0.5 text-[10px] text-white ${
-                        p.crop.source === 'ai' ? 'bg-blue-600/90' : 'bg-gray-600/90'
-                      }`}
+                      title={p.crop.source === 'ai' ? '已应用 LLM 的二次构图建议' : '手动调整的二次构图'}
+                      className="mono absolute bottom-1 left-1 bg-ink px-1.5 py-0.5 text-[9px] text-paper"
                     >
                       ✂ {p.crop.source === 'ai' ? 'AI 构图' : '手动构图'}
                       {p.crop.ratio !== 'original' ? ` · ${p.crop.ratio}` : ''}
@@ -699,49 +708,56 @@ export default function Workspace() {
                     p.cropSuggestion && (
                       <span
                         title={`LLM 建议：${p.cropSuggestion.reasoning}`}
-                        className="absolute bottom-1 left-1 rounded border border-blue-500 bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-blue-600"
+                        className="mono absolute bottom-1 left-1 border border-ink bg-paper px-1.5 py-0.5 text-[9px] font-medium text-ink"
                       >
                         AI 建议待应用
                       </span>
                     )
                   )}
-                  <div className="px-2 py-1.5">
-                    <p className="truncate text-xs text-gray-500" title={p.filename}>
+                  <div className="px-2.5 py-2">
+                    <p className="truncate text-xs text-ink-soft" title={p.filename}>
                       {p.filename}
                     </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-1">
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${statusMeta[p.status].cls}`}>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                      <span className={`mono px-1.5 py-0.5 text-[9px] ${statusMeta[p.status].cls}`}>
                         {statusMeta[p.status].label}
                       </span>
                       {p.analysis && (
-                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">
+                        <span className="mono border border-ink px-1.5 py-0.5 text-[9px] text-ink">
                           {p.analysis.score} 分
                         </span>
                       )}
                       {p.analysis?.issues.map((i) => (
-                        <span key={i} className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-500">
+                        <span
+                          key={i}
+                          className="mono border border-line-soft bg-paper-2 px-1.5 py-0.5 text-[9px] text-ink-soft"
+                        >
                           {i}
                         </span>
                       ))}
                     </div>
                     {p.status === 'failed' && (
-                      <div className="mt-1 flex items-center gap-1">
-                        <p className="line-clamp-2 flex-1 text-[11px] text-red-400" title={p.error ?? ''}>
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <p className="line-clamp-2 flex-1 text-[11px] text-ink" title={p.error ?? ''}>
                           {p.error ?? '分析失败'}
                         </p>
                         <button
                           onClick={() => void retryPhoto(p.id)}
                           disabled={retryingId === p.id}
                           title="只重试这一张"
-                          className="shrink-0 rounded border border-red-200 px-1.5 py-0.5 text-[10px] text-red-500 transition hover:bg-red-50 disabled:opacity-40"
+                          className="mono shrink-0 border border-ink px-1.5 py-0.5 text-[9px] text-ink transition-colors duration-300 hover:bg-ink hover:text-paper disabled:opacity-40"
                         >
                           {retryingId === p.id ? '重试中…' : '重试'}
                         </button>
                       </div>
                     )}
-                    {p.analysis && <p className="mt-1 line-clamp-2 text-[11px] text-gray-500">{p.analysis.reason}</p>}
                     {p.analysis && (
-                      <div className="mt-1 flex justify-end">
+                      <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-muted">
+                        {p.analysis.reason}
+                      </p>
+                    )}
+                    {p.analysis && (
+                      <div className="mt-1.5 flex justify-end">
                         <FeedbackButtons
                           photoId={p.id}
                           value={p.analysis.feedback ?? 0}
@@ -755,43 +771,55 @@ export default function Workspace() {
             </div>
           )}
 
+          {/* AI 推荐 */}
           {result && (
-            <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
-              <h2 className="font-semibold">🏆 AI 推荐 {result.selected.length} 张</h2>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+            <section>
+              <div className="sec-head">
+                <span className="mono text-muted">01</span>
+                <h2 className="sec-head__title">🏆 AI 推荐 {result.selected.length} 张</h2>
+                <span className="mono ml-auto text-muted">TOP SELECTION</span>
+              </div>
+              <div className="grid grid-cols-2 border-l border-t border-line sm:grid-cols-3 md:grid-cols-5">
                 {result.selected.map((s) => {
                   const p = photos.find((x) => x.id === s.photoId);
                   return (
-                    <div key={s.photoId} className="overflow-hidden rounded-lg border border-gray-200">
+                    <div
+                      key={s.photoId}
+                      className="relative border-r border-b border-line bg-paper transition-colors duration-300 hover:bg-paper-2"
+                    >
                       <div className="relative aspect-square">
                         <PhotoThumb photoId={s.photoId} />
-                        <span className="absolute top-1 left-1 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">
+                        <span className="mono absolute top-1 left-1 flex h-6 w-6 items-center justify-center bg-ink text-xs font-medium text-paper">
                           {s.order}
                         </span>
                         <button
                           onClick={() => p && setCropId(p.id)}
-                          className="absolute right-1 bottom-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white hover:bg-black/80"
+                          className="mono absolute right-1 bottom-1 border border-line bg-paper px-1.5 py-0.5 text-[9px] text-ink transition-colors duration-300 hover:bg-ink hover:text-paper"
                         >
                           ✂ 构图
                         </button>
                       </div>
-                      <p className="line-clamp-3 p-2 text-[11px] text-gray-600">{s.reason}</p>
+                      <p className="line-clamp-3 p-2.5 text-[11px] leading-relaxed text-ink-soft">
+                        {s.reason}
+                      </p>
                     </div>
                   );
                 })}
               </div>
-              <div>
-                <h3 className="mb-2 text-sm font-medium text-gray-700">落选照片（{result.rejected.length}）</h3>
-                <ul className="space-y-1">
+              <div className="mt-8">
+                <div className="sec-head">
+                  <span className="mono text-muted">02</span>
+                  <h3 className="sec-head__title text-base">落选照片（{result.rejected.length}）</h3>
+                  <span className="mono ml-auto text-muted">REJECTED</span>
+                </div>
+                <ul className="space-y-1.5">
                   {result.rejected.map((r) => (
-                    <li key={r.photoId} className="flex items-center gap-2 text-xs text-gray-600">
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] ${rejectCls[r.category] ?? rejectCls['内容平淡']}`}
-                      >
+                    <li key={r.photoId} className="flex items-center gap-2 text-xs text-ink-soft">
+                      <span className={`mono px-1.5 py-0.5 text-[9px] ${rejectCls[r.category] ?? rejectCls['内容平淡']}`}>
                         {r.category}
                       </span>
                       <span className="max-w-48 truncate">{r.filename}</span>
-                      <span className="text-gray-400">{r.detail}</span>
+                      <span className="text-muted">{r.detail}</span>
                     </li>
                   ))}
                 </ul>
@@ -818,6 +846,8 @@ export default function Workspace() {
               onExportGrid={(ids) => void exportGrid(ids)}
             />
           )}
+
+          <div className="hatch" aria-hidden />
 
           {cropId && (
             <CropModal

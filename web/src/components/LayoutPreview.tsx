@@ -59,88 +59,94 @@ export function LayoutPreview({ photos, selectedIds, exporting, onExport, onExpo
   const nameOf = (id: string | null) => photos.find((p) => p.id === id)?.filename ?? '';
 
   return (
-    <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="font-semibold">🖼 排版预览</h2>
-        <span className="text-xs text-gray-400">拖拽或点选两张交换位置</span>
-        <div className="flex-1" />
-        {TEMPLATES.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTemplate(t)}
-            className={`rounded-lg px-3 py-1.5 text-sm transition ${
-              template === t
-                ? 'bg-blue-50 font-medium text-blue-700 ring-1 ring-blue-300'
-                : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            {t} 张
-          </button>
-        ))}
+    <section>
+      <div className="sec-head">
+        <span className="mono text-muted">04</span>
+        <h2 className="sec-head__title">🖼 排版预览</h2>
+        <span className="mono ml-auto text-muted">LAYOUT · DRAG TO SWAP</span>
       </div>
 
-      <div className="mx-auto max-w-md rounded-xl border border-gray-100 bg-gray-50 p-3">
-        <div className={`grid gap-1.5 ${gridCols}`}>
-          {visible.map(({ idx, photoId }) => (
-            <div
-              key={idx}
-              draggable={!!photoId}
-              onDragStart={() => setDragIdx(idx)}
-              onDragOver={(e) => {
-                if (dragIdx !== null) e.preventDefault();
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (dragIdx !== null && dragIdx !== idx) swap(dragIdx, idx);
-                setDragIdx(null);
-              }}
-              onClick={() => photoId && cellClick(idx)}
-              className={`relative aspect-square overflow-hidden ${photoId ? 'cursor-pointer' : ''} ${
-                selIdx === idx ? 'ring-2 ring-blue-500' : dragIdx === idx ? 'opacity-50' : ''
+      <div className="panel p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="mono text-muted">TEMPLATE</span>
+          {TEMPLATES.map((t) => (
+            <button
+              key={t}
+              onClick={() => setTemplate(t)}
+              className={`mono border px-3 py-1.5 text-[11px] transition-colors duration-300 ${
+                template === t
+                  ? 'border-ink bg-ink text-paper'
+                  : 'border-line-soft text-ink-soft hover:border-ink hover:text-ink'
               }`}
-              title={photoId ? nameOf(photoId) : '待补充'}
             >
-              {photoId ? (
-                <>
-                  <PhotoThumb photoId={photoId} />
-                  <span className="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[10px] font-medium text-white">
-                    {idx + 1}
-                  </span>
-                </>
-              ) : (
-                <div className="flex h-full w-full items-center justify-center rounded border-2 border-dashed border-gray-200 text-[10px] text-gray-300">
-                  待补充
-                </div>
-              )}
-            </div>
+              {t} 张
+            </button>
           ))}
         </div>
-      </div>
 
-      {filled < template && (
-        <p className="text-center text-xs text-orange-500">
-          还有 {template - filled} 个空位：继续挑选照片或切换更小的模板
-        </p>
-      )}
+        <div className="mx-auto mt-5 max-w-md border border-line bg-paper-2 p-3">
+          <div className={`grid gap-1.5 ${gridCols}`}>
+            {visible.map(({ idx, photoId }) => (
+              <div
+                key={idx}
+                draggable={!!photoId}
+                onDragStart={() => setDragIdx(idx)}
+                onDragOver={(e) => {
+                  if (dragIdx !== null) e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragIdx !== null && dragIdx !== idx) swap(dragIdx, idx);
+                  setDragIdx(null);
+                }}
+                onClick={() => photoId && cellClick(idx)}
+                className={`relative aspect-square overflow-hidden border ${
+                  photoId ? 'cursor-pointer border-line' : 'border-dashed border-line-soft'
+                } ${selIdx === idx ? 'ring-2 ring-ink' : dragIdx === idx ? 'opacity-50' : ''}`}
+                title={photoId ? nameOf(photoId) : '待补充'}
+              >
+                {photoId ? (
+                  <>
+                    <PhotoThumb photoId={photoId} />
+                    <span className="mono absolute left-1 top-1 flex h-5 w-5 items-center justify-center bg-ink text-[9px] font-medium text-paper">
+                      {idx + 1}
+                    </span>
+                  </>
+                ) : (
+                  <div className="mono flex h-full w-full items-center justify-center text-[9px] text-muted">
+                    待补充
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {onExportGrid && (
-          <button
-            onClick={() => onExportGrid(order.slice(0, template).filter((id): id is string => !!id))}
-            disabled={exporting || filled === 0}
-            title="把当前排版拼成一张大图（发朋友圈单图用）"
-            className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition hover:bg-blue-100 disabled:opacity-40"
-          >
-            {exporting ? '打包中…' : `🖼 导出拼图（${TEMPLATE_COLS[template]} 列）`}
-          </button>
+        {filled < template && (
+          <p className="mono mt-4 text-center text-[10px] text-ink">
+            还有 {template - filled} 个空位：继续挑选照片或切换更小的模板
+          </p>
         )}
-        <button
-          onClick={() => onExport(order.slice(0, template).filter((id): id is string => !!id))}
-          disabled={exporting || filled === 0}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50 disabled:opacity-40"
-        >
-          {exporting ? '打包中…' : `⬇ 按此顺序导出 ${filled} 张`}
-        </button>
+
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-line-soft pt-4">
+          {onExportGrid && (
+            <button
+              onClick={() => onExportGrid(order.slice(0, template).filter((id): id is string => !!id))}
+              disabled={exporting || filled === 0}
+              title="把当前排版拼成一张大图（发朋友圈单图用）"
+              className="btn btn--sm"
+            >
+              <span>{exporting ? '打包中…' : `🖼 导出拼图（${TEMPLATE_COLS[template]} 列）`}</span>
+            </button>
+          )}
+          <button
+            onClick={() => onExport(order.slice(0, template).filter((id): id is string => !!id))}
+            disabled={exporting || filled === 0}
+            className="btn btn--sm"
+          >
+            <span>{exporting ? '打包中…' : `⬇ 按此顺序导出 ${filled} 张`}</span>
+          </button>
+        </div>
       </div>
     </section>
   );

@@ -1,13 +1,298 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
-html,
-body,
-#root {
-  height: 100%;
+/* ==========================================================================
+   设计变量 —— 与 xiaji-home（xiaji.xin）同一套黑白点阵 / brutalism 设计系统。
+   换配色 / 字体只改这里；组件里一律用语义类（bg-paper / text-ink / border-line…）。
+   ========================================================================== */
+@theme {
+  /* 颜色：严格的黑白灰米白，没有彩色 */
+  --color-paper: #f5f4f1; /* 页面底色（米白） */
+  --color-paper-2: #efeeea; /* 略深一层的底色：悬停 / 填充 */
+  --color-ink: #111111; /* 主墨色（近黑，不是纯黑，更耐看） */
+  --color-ink-soft: #3a3a3a; /* 正文灰 */
+  --color-muted: #6f6c66; /* 次要信息灰（mono 小标签） */
+  --color-line: #111111; /* 主描边 */
+  --color-line-soft: #cbc9c3; /* 次级分隔线 */
+  --color-white: #ffffff;
+
+  /* 字体（无网络字体，纯系统栈，与 xiaji-home 一致） */
+  --font-sans:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC',
+    'Hiragino Sans GB', sans-serif;
+  --font-mono:
+    'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+
+  /* 尺寸与动效 */
+  --radius-pill: 999px;
+  --ease-brand: cubic-bezier(0.2, 0.7, 0.2, 1); /* 先快后慢，显得"贵" */
+}
+
+/* ==========================================================================
+   全局基础
+   ========================================================================== */
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background-color: #f9fafb;
-  color: #111827;
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+:focus-visible {
+  outline: 1px solid var(--color-ink);
+  outline-offset: 3px;
+}
+
+/* --------------------------------------------------------------------------
+   工具类
+   -------------------------------------------------------------------------- */
+
+/* mono 小标签：编号、状态、单位 —— 全站的"技术感"来源 */
+.mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 斜线阴影条：分隔区块（45° 条纹，transform 平移避免频闪） */
+.hatch {
+  position: relative;
+  height: 18px;
+  border-top: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  background-color: var(--color-paper);
+  overflow: hidden;
+}
+
+.hatch::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(100% + 254.5585px);
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--color-ink) 0 1px,
+    transparent 1px 5px
+  );
+  animation: hatchFlow 32s linear infinite;
+  will-change: transform;
+}
+
+@keyframes hatchFlow {
+  to {
+    transform: translateX(-254.5585px);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   按钮：悬停时黑色从左侧填充过来（与 xiaji-home .btn 同一套）
+   -------------------------------------------------------------------------- */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 22px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-pill);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: inherit;
+  font-size: 13.5px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    color 0.45s var(--ease-brand),
+    border-color 0.35s var(--ease-brand);
+}
+
+.btn > * {
+  position: relative;
+  z-index: 1;
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--color-ink);
+  transform: translateX(-101%);
+  transition: transform 0.55s var(--ease-brand);
+}
+
+.btn:hover:not(:disabled)::before,
+.btn:focus-visible:not(:disabled)::before {
+  transform: translateX(0);
+}
+
+.btn:hover:not(:disabled),
+.btn:focus-visible:not(:disabled) {
+  color: var(--color-paper);
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* 实心（主操作）：墨底纸字，悬停翻成纸底墨字 */
+.btn--solid {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+.btn--solid::before {
+  background: var(--color-paper);
+}
+
+.btn--solid:hover:not(:disabled),
+.btn--solid:focus-visible:not(:disabled) {
+  color: var(--color-ink);
+}
+
+/* 小号（卡片内的行内按钮） */
+.btn--sm {
+  min-height: 30px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
+/* 触屏没有"移开鼠标"：悬停填充只留给有指针的设备，按压(:active)给反馈 */
+@media (hover: none) {
+  .btn:hover:not(:disabled) {
+    color: var(--color-ink);
+  }
+
+  .btn:hover:not(:disabled)::before {
+    transform: translateX(-101%);
+  }
+
+  .btn--solid:hover:not(:disabled) {
+    color: var(--color-paper);
+  }
+
+  .btn--solid:hover:not(:disabled)::before {
+    transform: translateX(0);
+  }
+
+  .btn:active:not(:disabled),
+  .btn--solid:active:not(:disabled) {
+    color: var(--color-paper);
+  }
+
+  .btn:active:not(:disabled)::before,
+  .btn--solid:active:not(:disabled)::before {
+    transform: translateX(0);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   输入框：1px 墨色细框 + 纸底，聚焦时边框加重（不用蓝色 focus ring）
+   -------------------------------------------------------------------------- */
+
+.field {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--color-line-soft);
+  border-radius: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.3s var(--ease-brand);
+}
+
+.field::placeholder {
+  color: var(--color-muted);
+}
+
+.field:focus {
+  border-color: var(--color-ink);
+}
+
+select.field {
+  appearance: none;
+  padding-right: 28px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--color-ink) 50%),
+    linear-gradient(135deg, var(--color-ink) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) calc(50% + 1px),
+    calc(100% - 11px) calc(50% + 1px);
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+/* --------------------------------------------------------------------------
+   面板：1px 边框拼出的"表格感"容器（替代原来的白底圆角阴影卡片）
+   -------------------------------------------------------------------------- */
+
+.panel {
+  border: 1px solid var(--color-line);
+  background: var(--color-paper);
+}
+
+/* 板块标题：编号 + 标题 + 右侧英文小标注 + 通栏细线 */
+.sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-line);
+  margin-bottom: clamp(20px, 3vw, 36px);
+}
+
+.sec-head__title {
+  font-size: clamp(18px, 1.8vw, 24px);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+}
+
+/* --------------------------------------------------------------------------
+   尊重系统「减少动态效果」设置
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
+  }
+
+  .hatch::before {
+    animation: none !important;
+  }
 }

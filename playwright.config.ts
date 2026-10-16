@@ -21,7 +21,14 @@ export default defineConfig({
       port: 8787,
       reuseExistingServer: false,
       timeout: 60_000,
-      env: { DATA_DIR: apiDataDir, JWT_SECRET: 'e2e-secret', REGISTER_ENABLED: 'true' },
+      env: {
+        DATA_DIR: apiDataDir,
+        JWT_SECRET: 'e2e-secret',
+        REGISTER_ENABLED: 'true',
+        // E2E 多个用例共享 localhost 同一 IP，路由级限速会把初始化/轮询请求打满；
+        // 限速行为由 server/test/integration/auth.rate-limit.test.ts 专项覆盖
+        RATE_LIMIT_ENABLED: 'false',
+      },
     },
     {
       command: 'npm run dev:web',

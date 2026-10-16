@@ -36,62 +36,73 @@ export default function LoginPage() {
     }
   }
 
-  const input =
-    'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
-        <h1 className="text-center text-2xl font-bold">📷 Moments</h1>
-        <p className="mt-1 text-center text-sm text-gray-400">AI 帮你挑出发朋友圈的图</p>
+    <div className="flex min-h-screen items-center justify-center bg-paper px-4">
+      <div className="w-full max-w-sm">
+        {/* 品牌区：mono 小标 + 大标题 + 斜线分隔 */}
+        <div className="mb-8 text-center">
+          <p className="mono text-muted">AI PHOTO CURATION</p>
+          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.03em]">📷 Moments</h1>
+          <p className="mt-2 text-sm text-ink-soft">AI 帮你挑出发朋友圈的图</p>
+        </div>
 
-        {registerOpen ? (
-          <div className="mt-6 grid grid-cols-2 rounded-lg bg-gray-100 p-1 text-sm">
-            {(['login', 'register'] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => {
-                  setMode(m);
-                  setError('');
-                }}
-                className={`rounded-md py-1.5 transition ${
-                  mode === m ? 'bg-white font-medium shadow-sm' : 'text-gray-500'
-                }`}
-              >
-                {m === 'login' ? '登录' : '注册'}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <h2 className="mt-6 text-center text-sm font-medium text-gray-600">登录</h2>
-        )}
+        <div className="panel p-8">
+          {registerOpen ? (
+            <div className="mb-6 flex border border-line">
+              {(['login', 'register'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setMode(m);
+                    setError('');
+                  }}
+                  className={`flex-1 py-2 text-[13px] font-medium transition-colors duration-300 ${
+                    mode === m ? 'bg-ink text-paper' : 'text-ink-soft hover:bg-paper-2'
+                  }`}
+                >
+                  {m === 'login' ? '登录' : '注册'}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <h2 className="mb-6 text-center text-sm font-medium text-ink-soft">登录</h2>
+          )}
 
-        <form onSubmit={submit} className="mt-4 space-y-3">
-          <input
-            className={input}
-            placeholder="用户名（3~20 位字母/数字/下划线）"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoComplete="username"
-          />
-          <input
-            className={input}
-            type="password"
-            placeholder="密码（≥8 位，含字母和数字）"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-          />
-          {error && <p className="text-xs text-red-500">{error}</p>}
-          <button
-            type="submit"
-            disabled={busy || !username || !password}
-            className="w-full rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-40"
-          >
-            {busy ? '请稍候…' : mode === 'login' ? '登录' : '注册并进入'}
-          </button>
-        </form>
+          <form onSubmit={submit} className="space-y-4">
+            <div>
+              <label className="mono mb-2 block text-muted">USERNAME</label>
+              <input
+                className="field"
+                placeholder="用户名（3~20 位字母/数字/下划线）"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+              />
+            </div>
+            <div>
+              <label className="mono mb-2 block text-muted">PASSWORD</label>
+              <input
+                className="field"
+                type="password"
+                placeholder="密码（≥8 位，含字母和数字）"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              />
+            </div>
+            {error && <p className="border-l-2 border-ink pl-2 text-xs text-ink">{error}</p>}
+            <button
+              type="submit"
+              disabled={busy || !username || !password}
+              className="btn btn--solid w-full"
+            >
+              <span>{busy ? '请稍候…' : mode === 'login' ? '登录' : '注册并进入'}</span>
+            </button>
+          </form>
+        </div>
+
+        <p className="mono mt-6 text-center text-muted">MOMENTS · LOCAL FIRST</p>
       </div>
     </div>
   );
