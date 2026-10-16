@@ -1,6 +1,8 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { ZipArchive } from 'archiver';
+import sharp from 'sharp';
 import { nanoid } from 'nanoid';
 import { config } from '../config.js';
 import { db } from '../db.js';
@@ -8,6 +10,8 @@ import { authPreHandler } from '../auth.js';
 import { processImage } from '../services/images.js';
 import { startAnalysis, requestCancel, isRunning } from '../services/pipeline.js';
 import { selectTopN } from '../services/select.js';
+import { startBatchCropSuggest, getCropProgress } from '../services/crop.js';
+import { boxToPixelExtract } from '../services/cropBox.js';
 import { ensureDir, photoDir, sessionDir } from '../services/storage.js';
 import { listProviders } from '../services/providers/registry.js';
 import { httpErr } from '../util.js';
@@ -49,8 +53,13 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     const s = ownSession(req, (req.params as { id: string }).id);
     const photos = db
       .prepare(
-        `SELECT p.*, a.score AS a_score, a.tags AS a_tags, a.issues AS a_issues, a.reason AS a_reason
-         FROM photos p LEFT JOIN analyses a ON a.photo_id = p.id
+        `SELECT p.*, a.score AS a_score, a.tags AS a_tags, a.issues AS a_issues, a.reason AS a_reason,
+                cs.ratio AS cs_ratio, cs.box_x AS cs_x, cs.box_y AS cs_y, cs.box_w AS cs_w, cs.box_h AS cs_h, cs.reasoning AS cs_reason,
+                c.ratio AS c_ratio, c.box_x AS c_x, c.box_y AS c_y, c.box_w AS c_w, c.box_h AS c_h, c.source AS c_source
+         FROM photos p
+         LEFT JOIN analyses a ON a.photo_id = p.id
+         LEFT JOIN crop_suggestions cs ON cs.photo_id = p.id
+         LEFT JOIN crops c ON c.photo_id = p.id
          WHERE p.session_id = ? ORDER BY p.taken_at, p.created_at`,
       )
       .all(s.id) as any[];
@@ -69,6 +78,18 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           p.a_score == null
             ? null
             : { score: p.a_score, tags: JSON.parse(p.a_tags), issues: JSON.parse(p.a_issues), reason: p.a_reason },
+        cropSuggestion:
+          p.cs_ratio == null
+            ? null
+            : {
+                ratio: p.cs_ratio,
+                box: { x: p.cs_x, y: p.cs_y, w: p.cs_w, h: p.cs_h },
+                reasoning: p.cs_reason,
+              },
+        crop:
+          p.c_ratio == null
+            ? null
+            : { ratio: p.c_ratio, box: { x: p.c_x, y: p.c_y, w: p.c_w, h: p.c_h }, source: p.c_source },
       })),
     };
   });
@@ -182,5 +203,61 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     db.prepare('DELETE FROM sessions WHERE id = ?').run(s.id);
     await fs.rm(sessionDir(s.user_id, s.id), { recursive: true, force: true });
     return { ok: true };
+  });
+
+  // AC-F6-1：批量生成构图建议（异步 + 进度轮询）
+  app.post('/:id/crop-suggest', { preHandler: authPreHandler }, async (req) => {
+    const s = ownSession(req, (req.params as { id: string }).id);
+    const body = (req.body ?? {}) as { force?: boolean };
+    startBatchCropSuggest(s.id, s.user_id, s.provider, s.model ?? '', !!body.force);
+    return { ok: true };
+  });
+
+  app.get('/:id/crop-progress', { preHandler: authPreHandler }, async (req) => {
+    const s = ownSession(req, (req.params as { id: string }).id);
+    return getCropProgress(s.id);
+  });
+
+  // AC-F9-1/2/4：导出 zip（应用裁剪的按原图坐标裁剪，未裁剪的按原图导出）
+  app.post('/:id/export', { preHandler: authPreHandler }, async (req, reply) => {
+    const s = ownSession(req, (req.params as { id: string }).id);
+    const body = (req.body ?? {}) as { photoIds?: string[] };
+    let rows = db
+      .prepare(
+        `SELECT p.*, c.box_x AS c_x, c.box_y AS c_y, c.box_w AS c_w, c.box_h AS c_h
+         FROM photos p LEFT JOIN crops c ON c.photo_id = p.id
+         WHERE p.session_id = ? AND p.status = 'done'
+         ORDER BY p.taken_at, p.created_at`,
+      )
+      .all(s.id) as any[];
+    if (Array.isArray(body.photoIds) && body.photoIds.length > 0) {
+      const ids = new Set<string>(body.photoIds);
+      rows = rows.filter((r) => ids.has(r.id));
+    }
+    if (rows.length === 0) throw httpErr(409, '没有可导出的照片');
+
+    const archive = new ZipArchive({ zlib: { level: 9 } });
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="moments-${s.id}.zip"`,
+      'Transfer-Encoding': 'chunked',
+    });
+    archive.pipe(reply.raw);
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const dir = photoDir(s.user_id, s.id, r.id);
+      let data: Buffer;
+      if (r.c_x != null && r.width > 0 && r.height > 0) {
+        const extract = boxToPixelExtract({ x: r.c_x, y: r.c_y, w: r.c_w, h: r.c_h }, r.width, r.height);
+        data = await sharp(path.join(dir, 'original.jpg')).extract(extract).jpeg({ quality: 92 }).toBuffer();
+      } else {
+        data = await fs.readFile(path.join(dir, 'original.jpg'));
+      }
+      const safeName = String(r.filename ?? 'photo').replace(/[\\/:*?"<>|]/g, '_');
+      archive.append(data, { name: `${String(i + 1).padStart(2, '0')}_${safeName.endsWith('.jpg') || safeName.endsWith('.jpeg') ? safeName : `${safeName}.jpg`}` });
+    }
+    await archive.finalize();
   });
 };

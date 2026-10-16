@@ -52,4 +52,27 @@ CREATE TABLE IF NOT EXISTS analyses (
   model      TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS crop_suggestions (
+  photo_id   TEXT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+  ratio      TEXT NOT NULL,
+  box_x      REAL NOT NULL,
+  box_y      REAL NOT NULL,
+  box_w      REAL NOT NULL,
+  box_h      REAL NOT NULL,
+  reasoning  TEXT NOT NULL,
+  model      TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS crops (
+  photo_id   TEXT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+  ratio      TEXT NOT NULL,
+  box_x      REAL NOT NULL,
+  box_y      REAL NOT NULL,
+  box_w      REAL NOT NULL,
+  box_h      REAL NOT NULL,
+  source     TEXT NOT NULL DEFAULT 'manual',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);

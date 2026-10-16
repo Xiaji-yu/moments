@@ -42,3 +42,17 @@ export async function authBlob(path: string): Promise<Blob> {
   if (!res.ok) throw new Error('图片加载失败');
   return res.blob();
 }
+
+/** POST + 鉴权下载二进制（导出 zip 用） */
+export async function authBlobPost(path: string, body: unknown): Promise<Blob> {
+  const res = await fetch(`/api${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getToken() ?? ''}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new ApiError(res.status, (data as { error?: string } | null)?.error ?? `导出失败（${res.status}）`);
+  }
+  return res.blob();
+}

@@ -14,6 +14,36 @@ export interface Analysis {
 
 export type PhotoStatus = 'ready' | 'analyzing' | 'done' | 'failed';
 
+export type Ratio = 'original' | '1:1' | '3:4' | '4:3' | '16:9' | '9:16';
+export const RATIO_LIST: Ratio[] = ['original', '1:1', '3:4', '4:3', '16:9', '9:16'];
+export const RATIO_LABEL: Record<Ratio, string> = {
+  original: '原始',
+  '1:1': '1:1',
+  '3:4': '3:4',
+  '4:3': '4:3',
+  '16:9': '16:9',
+  '9:16': '9:16',
+};
+
+export interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface CropSuggestion {
+  ratio: Ratio;
+  box: Box;
+  reasoning: string;
+}
+
+export interface Crop {
+  ratio: Ratio;
+  box: Box;
+  source: 'ai' | 'manual' | 'original';
+}
+
 export interface Photo {
   id: string;
   filename: string;
@@ -24,6 +54,8 @@ export interface Photo {
   takenAt: string | null;
   hasExif: boolean;
   analysis: Analysis | null;
+  cropSuggestion: CropSuggestion | null;
+  crop: Crop | null;
 }
 
 export interface SessionInfo {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, setToken } from '../api';
+import { api, authBlobPost, setToken } from '../api';
 import type {
   Photo,
   PhotoStatus,
@@ -10,6 +10,7 @@ import type {
   SessionInfo,
 } from '../types';
 import { PhotoThumb } from '../components/PhotoThumb';
+import { CropModal } from '../components/CropModal';
 
 const statusMeta: Record<PhotoStatus, { label: string; cls: string }> = {
   ready: { label: '待分析', cls: 'bg-gray-100 text-gray-500' },
@@ -40,8 +41,12 @@ export default function Workspace() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [cropId, setCropId] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<number | null>(null);
+  const cropTimerRef = useRef<number | null>(null);
 
   const loadSession = useCallback(async (id: string) => {
     const d = await api<SessionDetail>(`/sessions/${id}`);
@@ -70,6 +75,14 @@ export default function Workspace() {
             localStorage.removeItem('moments_session');
           }
         }
+        // 恢复用户最近的会话（NFR-13 会话恢复），没有才新建
+        const list = await api<{ sessions: SessionInfo[] }>('/sessions');
+        if (list.sessions.length > 0) {
+          localStorage.setItem('moments_session', list.sessions[0].id);
+          setSessionId(list.sessions[0].id);
+          await loadSession(list.sessions[0].id);
+          return;
+        }
         const s = await api<SessionInfo>('/sessions', { method: 'POST', body: '{}' });
         localStorage.setItem('moments_session', s.id);
         setSessionId(s.id);
@@ -82,6 +95,7 @@ export default function Workspace() {
   useEffect(
     () => () => {
       if (timerRef.current) window.clearInterval(timerRef.current);
+      if (cropTimerRef.current) window.clearInterval(cropTimerRef.current);
     },
     [],
   );
@@ -204,6 +218,70 @@ export default function Workspace() {
     window.location.assign('/login');
   }
 
+  function stopCropPoll() {
+    if (cropTimerRef.current) {
+      window.clearInterval(cropTimerRef.current);
+      cropTimerRef.current = null;
+    }
+  }
+
+  /** 批量生成构图建议 + 轮询进度（AC-F6-1） */
+  async function suggestCrops() {
+    if (!sessionId) return;
+    setError('');
+    setNotice('');
+    try {
+      await api(`/sessions/${sessionId}/crop-suggest`, { method: 'POST', body: '{}' });
+      setSuggesting(true);
+      stopCropPoll();
+      cropTimerRef.current = window.setInterval(async () => {
+        try {
+          const p = await api<{ running: boolean; total: number; done: number }>(
+            `/sessions/${sessionId}/crop-progress`,
+          );
+          if (!p.running && p.done >= p.total) {
+            stopCropPoll();
+            setSuggesting(false);
+            await loadSession(sessionId);
+            setNotice(p.total === 0 ? '所有已完成分析的照片都已有构图建议' : `构图建议完成（${p.done} 张）`);
+          }
+        } catch {
+          stopCropPoll();
+          setSuggesting(false);
+        }
+      }, 800);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  /** 导出 zip：有推荐结果时导推荐，否则导全部已完成（AC-F9-1/2/4） */
+  async function exportZip() {
+    const ids = result
+      ? result.selected.map((s) => s.photoId)
+      : photos.filter((p) => p.status === 'done').map((p) => p.id);
+    if (!ids.length) {
+      setError('没有可导出的照片');
+      return;
+    }
+    setExporting(true);
+    setError('');
+    try {
+      const blob = await authBlobPost(`/sessions/${sessionId}/export`, { photoIds: ids });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `moments-${sessionId}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setNotice(`已导出 ${ids.length} 张（已应用二次构图的按裁剪成图打包）`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const analyzedAll = photos.length > 0 && photos.every((p) => p.status === 'done');
   const progressPct = progress && progress.total ? Math.round(((progress.done + progress.failed) / progress.total) * 100) : 0;
   const currentModels = providers.find((p) => p.id === providerId)?.models ?? [];
@@ -309,6 +387,22 @@ export default function Workspace() {
           >
             AI 挑图
           </button>
+          <button
+            onClick={() => void suggestCrops()}
+            disabled={!analyzedAll || analyzing || suggesting}
+            title="为已完成分析、还没有建议的照片生成二次构图建议"
+            className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 disabled:opacity-40"
+          >
+            {suggesting ? '生成构图建议中…' : '✂ 生成构图建议'}
+          </button>
+          <button
+            onClick={() => void exportZip()}
+            disabled={exporting || analyzing || (!result && !photos.some((p) => p.status === 'done'))}
+            title={result ? '导出 AI 推荐的照片' : '导出全部已完成分析的照片'}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-40"
+          >
+            {exporting ? '打包中…' : result ? `⬇ 导出推荐 ${result.selected.length} 张` : '⬇ 导出 zip'}
+          </button>
           {analyzing && progress && (
             <div className="min-w-48 flex-1">
               <div className="h-2 overflow-hidden rounded-full bg-gray-200">
@@ -332,12 +426,24 @@ export default function Workspace() {
                   <PhotoThumb photoId={p.id} />
                 </div>
                 <button
+                  onClick={() => setCropId(p.id)}
+                  title="二次构图"
+                  className="absolute top-1 left-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/40 text-xs text-white transition hover:bg-black/70"
+                >
+                  ✂
+                </button>
+                <button
                   onClick={() => void removePhoto(p.id)}
                   title="删除"
-                  className="absolute top-1 right-1 hidden h-6 w-6 items-center justify-center rounded-full bg-black/50 text-xs text-white group-hover:flex"
+                  className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/40 text-xs text-white transition hover:bg-black/70"
                 >
                   ×
                 </button>
+                {p.crop && (
+                  <span className="absolute bottom-1 left-1 rounded bg-blue-600/90 px-1.5 py-0.5 text-[10px] text-white">
+                    ✂ {p.crop.ratio === 'original' ? '已构图' : p.crop.ratio}
+                  </span>
+                )}
                 <div className="px-2 py-1.5">
                   <p className="truncate text-xs text-gray-500" title={p.filename}>
                     {p.filename}
@@ -373,17 +479,26 @@ export default function Workspace() {
           <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
             <h2 className="font-semibold">🏆 AI 推荐 {result.selected.length} 张</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-              {result.selected.map((s) => (
-                <div key={s.photoId} className="overflow-hidden rounded-lg border border-gray-200">
-                  <div className="relative aspect-square">
-                    <PhotoThumb photoId={s.photoId} />
-                    <span className="absolute top-1 left-1 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">
-                      {s.order}
-                    </span>
+              {result.selected.map((s) => {
+                const p = photos.find((x) => x.id === s.photoId);
+                return (
+                  <div key={s.photoId} className="overflow-hidden rounded-lg border border-gray-200">
+                    <div className="relative aspect-square">
+                      <PhotoThumb photoId={s.photoId} />
+                      <span className="absolute top-1 left-1 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">
+                        {s.order}
+                      </span>
+                      <button
+                        onClick={() => p && setCropId(p.id)}
+                        className="absolute right-1 bottom-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white hover:bg-black/80"
+                      >
+                        ✂ 构图
+                      </button>
+                    </div>
+                    <p className="line-clamp-3 p-2 text-[11px] text-gray-600">{s.reason}</p>
                   </div>
-                  <p className="line-clamp-3 p-2 text-[11px] text-gray-600">{s.reason}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div>
               <h3 className="mb-2 text-sm font-medium text-gray-700">落选照片（{result.rejected.length}）</h3>
@@ -400,6 +515,15 @@ export default function Workspace() {
               </ul>
             </div>
           </section>
+        )}
+        {cropId && (
+          <CropModal
+            photo={photos.find((p) => p.id === cropId)!}
+            onClose={(refreshed) => {
+              setCropId(null);
+              if (refreshed && sessionId) void loadSession(sessionId);
+            }}
+          />
         )}
       </main>
     </div>
