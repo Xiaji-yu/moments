@@ -77,6 +77,7 @@ export async function suggestCropForPhoto(
   };
 
   let res = await provider.suggestCrop({ ...input });
+  const firstParseOk = CropSuggestionSchema.safeParse(res.data).success;
   let parsed = CropSuggestionSchema.safeParse(res.data);
   if (!parsed.success && !retryWithCorrection) {
     res = await provider.suggestCrop({
@@ -96,6 +97,35 @@ export async function suggestCropForPhoto(
   const box = boxFromModelHint(raw.box, ratio, photo.width, photo.height, raw.subject, 0.3);
 
   const reasoning = raw.reasoning.slice(0, 60);
+
+  // 诊断日志：完整链路一次打全，用于判断「建议不对」的根因——
+  //   subject 缺失/落在画面正中 → 模型语义问题（它没找到主体）
+  //   subject 在主体处但 finalBox 偏了 → 服务端几何问题
+  //   ratio 不合理 → 模型比例选择问题
+  // dev 时在 `npm run dev` 的 api 输出里；Docker 用 `docker compose logs -f app | grep crop-suggest`
+  const hasSubject =
+    raw.subject != null && Number.isFinite(raw.subject.x) && Number.isFinite(raw.subject.y);
+  console.info(
+    '[crop-suggest] ' +
+      JSON.stringify({
+        photoId,
+        provider: providerId,
+        model: input.model,
+        imageSize: { w: photo.width, h: photo.height },
+        firstParseOk,
+        retriedWithCorrection: !firstParseOk && parsed.success,
+        rawData: res.data,
+        parsed: parsed.success
+          ? { ratio: parsed.data.ratio, subject: parsed.data.subject, box: parsed.data.box }
+          : null,
+        boxSource: hasSubject ? 'subject' : raw.box ? 'box-center' : 'fallback-center',
+        finalBox: {
+          norm: { x: +box.x.toFixed(4), y: +box.y.toFixed(4), w: +box.w.toFixed(4), h: +box.h.toFixed(4) },
+          area: +(box.w * box.h).toFixed(4),
+        },
+        usage: res.usage,
+      }),
+  );
 
   db.prepare(
     `INSERT INTO crop_suggestions (photo_id, ratio, box_x, box_y, box_w, box_h, reasoning, model)

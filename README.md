@@ -43,7 +43,8 @@ ZHIPU_API_KEY=your-key
 - 本地 dev（`npm run dev`）会在启动时加载根目录或 `server/` 下的 `.env`，不覆盖 shell/Docker 已注入的变量；
 - **已创建的会话会记住当时的供应商**，新配置生效后需在右上角下拉切到新供应商再分析；
 - 登录/注册等接口的限速、`REGISTER_ENABLED` 等开关同样来自该文件；
-- `DAILY_TOKEN_LIMIT` 可限制每用户每日消耗的模型 token（0 = 不限制），达到后模型调用返回 429——用真实 Key 时建议配上。
+- `DAILY_TOKEN_LIMIT` 可限制每用户每日消耗的模型 token（0 = 不限制），达到后模型调用返回 429——用真实 Key 时建议配上；
+- **二次构图建议有诊断日志**：dev 时看 `npm run dev` 的 api 输出里 `[crop-suggest]` 开头的行，Docker 用 `docker compose logs -f app | grep crop-suggest`。里面记录模型原始返回（`rawData`）、是否给出主体坐标（`subject`）、服务端采纳了哪个中心（`boxSource`）与最终裁剪框（`finalBox`）——建议框不合理时用它定位是模型语义问题还是几何问题。
 
 ## 云服务器部署
 
