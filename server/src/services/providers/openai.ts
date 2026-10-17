@@ -109,8 +109,14 @@ export function makeOpenAIProvider(cfg: ProviderCfg): VisionProvider {
       return chat(model || cfg.defaultModel, SYSTEM_PROMPT, `data:${mime};base64,${imageBase64}`, userText);
     },
 
-    async suggestCrop({ imageBase64, mime, model, corrective }: SuggestCropInput) {
-      const userText = corrective ? `${corrective}\n${CROP_USER_PROMPT}` : CROP_USER_PROMPT;
+    async suggestCrop({ imageBase64, mime, model, corrective, width, height }: SuggestCropInput) {
+      // 原图宽高比必须告诉模型：否则它无法判断横竖版构图，也不知道归一化框
+      // 换算成像素后是什么形状（提示词已不再要求它精确匹配比例，但朝向仍关键）
+      const dims =
+        width > 0 && height > 0
+          ? `\n原图尺寸 ${width}×${height} 像素，宽高比 ${(width / height).toFixed(3)}（${width >= height ? '横版' : '竖版'}）。`
+          : '';
+      const userText = corrective ? `${corrective}\n${CROP_USER_PROMPT}${dims}` : `${CROP_USER_PROMPT}${dims}`;
       return chat(model || cfg.defaultModel, CROP_SYSTEM_PROMPT, `data:${mime};base64,${imageBase64}`, userText);
     },
 

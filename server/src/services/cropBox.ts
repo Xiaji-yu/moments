@@ -108,3 +108,47 @@ export function boxToPixelExtract(box: Box, imgW: number, imgH: number) {
   const height = clamp(Math.round(box.h * imgH), 1, imgH - top);
   return { left, top, width, height };
 }
+
+/**
+ * 把模型输出的框当作「主体位置 + 大致范围」的语义信号，生成几何正确的裁剪框：
+ * - 以模型框的中心为中心，取该比例下内接画面的最大框；
+ * - 按模型框面积占最大框的比例等比缩放（不低于原图 20% 面积对应的尺度）；
+ * - 模型没给框 / 框非法 → 该比例居中最大框。
+ *
+ * 为什么 AI 建议不走 normalizeBox：模型并不知道原图宽高比，输出的框比例几乎不可能
+ * 精确匹配所选 ratio；normalizeBox 会"保持中心强行压扁/拉高"，框很容易被推离主体。
+ * 这里只信任模型指认的"主体在哪、想裁多大"，几何精度由服务端保证。
+ */
+export function boxFromModelHint(raw: unknown, ratio: Ratio, imgW: number, imgH: number): Box {
+  const r = normRatio(ratio, imgW, imgH);
+  const valid =
+    raw !== null &&
+    typeof raw === 'object' &&
+    Number.isFinite((raw as Box).x) &&
+    Number.isFinite((raw as Box).y) &&
+    Number.isFinite((raw as Box).w) &&
+    Number.isFinite((raw as Box).h);
+
+  if (!valid) return fitRatioBox(0.5, 0.5, r);
+
+  const b = raw as Box;
+  const cx = clamp(b.x + b.w / 2, 0, 1); // 模型指认的主体中心
+  const cy = clamp(b.y + b.h / 2, 0, 1);
+  const max = fitRatioBox(cx, cy, r);
+  const maxArea = Math.max(max.w * max.h, 1e-6);
+
+  // 只取"想裁多大"的面积信号，不受模型框形状与比例误差干扰
+  const hintArea = clamp(b.w * b.h, 0.01, 1);
+  let scale = Math.sqrt(hintArea / maxArea);
+  scale = Math.max(scale, Math.sqrt(0.2 / maxArea)); // 面积不低于原图 20%
+  scale = Math.min(scale, 1);
+
+  const w = max.w * scale;
+  const h = w / r;
+  return {
+    x: clamp(cx - w / 2, 0, Math.max(0, 1 - w)),
+    y: clamp(cy - h / 2, 0, Math.max(0, 1 - h)),
+    w,
+    h,
+  };
+}

@@ -58,14 +58,22 @@ export const mockProvider: VisionProvider = {
     const seed = crypto.createHash('md5').update(input.hint?.filename ?? 'crop').digest();
     const width = input.width > 0 ? input.width : 4;
     const height = input.height > 0 ? input.height : 3;
+    const landscape = width >= height;
 
-    const ratio = CROP_RATIOS[seed[5] % CROP_RATIOS.length];
+    // 只推荐与图片朝向相容的比例（横图不裁 9:16 竖框，竖图不裁 16:9 横框）
+    const pool = CROP_RATIOS.filter((r) => {
+      if (r === 'original') return true;
+      const vertical = r === '9:16' || r === '3:4';
+      return landscape ? !vertical : vertical;
+    });
+    const ratio = pool[seed[5] % pool.length];
     const r = normRatio(ratio, width, height);
-    // 中心落在三分点附近，取该比例最大内接框的 70%~95%
+
+    // 主体中心放在三分点附近（0.33~0.66），裁剪范围取最大内接框的 55%~85%
     const cx = 1 / 3 + (seed[6] % 34) / 100;
     const cy = 1 / 3 + (seed[7] % 34) / 100;
     const max = fitRatioBox(cx, cy, r);
-    const scale = 0.7 + (seed[8] % 26) / 100;
+    const scale = 0.55 + (seed[8] % 31) / 100;
     const box = {
       x: max.x + (max.w * (1 - scale)) / 2,
       y: max.y + (max.h * (1 - scale)) / 2,

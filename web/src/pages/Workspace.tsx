@@ -854,7 +854,10 @@ export default function Workspace() {
               photo={photos.find((p) => p.id === cropId)!}
               onClose={(refreshed) => {
                 setCropId(null);
-                if (refreshed && sessionId) void loadSession(sessionId);
+                if (refreshed && sessionId) {
+                  void loadSession(sessionId);
+                  setNotice('已应用裁剪，导出时按裁剪成图打包');
+                }
               }}
             />
           )}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   RATIOS,
+  boxFromModelHint,
   boxToPixelExtract,
   fitRatioBox,
   normRatio,
@@ -140,5 +141,46 @@ describe('boxToPixelExtract（归一化 → 原图像素，AC-F6-4）', () => {
 describe('RATIOS 常量', () => {
   it('包含全部 6 个候选比例', () => {
     expect(RATIOS).toEqual(['original', '1:1', '3:4', '4:3', '16:9', '9:16']);
+  });
+});
+
+describe('boxFromModelHint（AI 建议：只信任主体位置与大致范围）', () => {
+  const IMG_W = 1600;
+  const IMG_H = 1000;
+
+  it('框的中心跟随模型指认的主体位置（即使模型框比例不符）', () => {
+    // 模型给了个很宽很扁的框，中心在左上主体处 (0.25, 0.3)，但说 ratio=1:1
+    const box = boxFromModelHint({ x: 0.05, y: 0.2, w: 0.4, h: 0.2 }, '1:1', IMG_W, IMG_H);
+    expect(box.x + box.w / 2).toBeCloseTo(0.25, 2);
+    expect(box.y + box.h / 2).toBeCloseTo(0.3, 2);
+  });
+
+  it('输出框换算成像素后宽高比与所选 ratio 一致', () => {
+    for (const ratio of ['1:1', '3:4', '4:3', '16:9', '9:16', 'original'] as const) {
+      const box = boxFromModelHint({ x: 0.1, y: 0.15, w: 0.5, h: 0.5 }, ratio, IMG_W, IMG_H);
+      const pxW = box.w * IMG_W;
+      const pxH = box.h * IMG_H;
+      const expected = ratioValue(ratio, IMG_W, IMG_H);
+      expect(Math.abs(pxW / pxH - expected)).toBeLessThan(0.02);
+    }
+  });
+
+  it('完全落在画面内', () => {
+    const box = boxFromModelHint({ x: 0.8, y: 0.85, w: 0.3, h: 0.3 }, '1:1', IMG_W, IMG_H);
+    expect(inFrame(box)).toBe(true);
+  });
+
+  it('模型想裁得小 → 输出框也小（但不低于原图 20% 面积）', () => {
+    const small = boxFromModelHint({ x: 0.4, y: 0.4, w: 0.2, h: 0.2 }, 'original', IMG_W, IMG_H);
+    expect(small.w * small.h).toBeGreaterThanOrEqual(0.2 - 1e-6);
+    const big = boxFromModelHint({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, 'original', IMG_W, IMG_H);
+    expect(big.w * big.h).toBeGreaterThan(small.w * small.h);
+  });
+
+  it('模型没给框 / 框非法 → 该比例居中最大框（降级）', () => {
+    const centered = fitRatioBox(0.5, 0.5, normRatio('1:1', IMG_W, IMG_H));
+    expect(boxFromModelHint(null, '1:1', IMG_W, IMG_H)).toEqual(centered);
+    expect(boxFromModelHint({ x: 'a', y: 0, w: 1, h: 1 }, '1:1', IMG_W, IMG_H)).toEqual(centered);
+    expect(boxFromModelHint(undefined, '1:1', IMG_W, IMG_H)).toEqual(centered);
   });
 });

@@ -4,7 +4,7 @@ import { db } from '../db.js';
 import { httpErr } from '../util.js';
 import { getProvider } from './providers/registry.js';
 import { CropSuggestionSchema } from './schema.js';
-import { normalizeBox, normRatio, RATIOS, type Ratio } from './cropBox.js';
+import { normalizeBox, boxFromModelHint, normRatio, RATIOS, type Ratio } from './cropBox.js';
 import { photoDir } from './storage.js';
 import { config } from '../config.js';
 import { recordUsage } from './usage.js';
@@ -89,9 +89,9 @@ export async function suggestCropForPhoto(
     ? parsed.data
     : { ratio: 'original' as Ratio, box: null, reasoning: '构图建议生成失败，请重试' }; // 降级
 
-  // AC-F6-2：服务端硬校验 + 降级（框进画面、比例精确、面积 ≥ 20%）
+  // AC-F6-2：AI 建议只信任「主体位置 + 大致范围」，几何精度由服务端保证
   const ratio = RATIOS.includes(raw.ratio as Ratio) ? (raw.ratio as Ratio) : 'original';
-  const box = normalizeBox(raw.box, ratio, photo.width, photo.height);
+  const box = boxFromModelHint(raw.box, ratio, photo.width, photo.height);
 
   const reasoning = raw.reasoning.slice(0, 60);
 

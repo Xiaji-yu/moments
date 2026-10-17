@@ -31,6 +31,26 @@ export function CropModal({ photo, onClose }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState>(null);
 
+  // 弹窗打开期间锁住背景滚动：
+  // overflow:hidden 拦得住用户滚轮/触摸，但拦不住编程式滚动（scrollTo / scrollTop 赋值），
+  // 所以再用 scroll 监听把位置钉在原地。
+  useEffect(() => {
+    const y = window.scrollY;
+    const prevBody = document.body.style.overflow;
+    const prevHtml = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    const lock = () => {
+      if (window.scrollY !== y) window.scrollTo(0, y);
+    };
+    window.addEventListener('scroll', lock, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', lock);
+      document.body.style.overflow = prevBody;
+      document.documentElement.style.overflow = prevHtml;
+    };
+  }, []);
+
   // 加载原图（按原图坐标预览与导出，AC-F6-4）
   useEffect(() => {
     let dead = false;
@@ -232,33 +252,34 @@ export function CropModal({ photo, onClose }: Props) {
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-ink/40" style={{ height: `${(1 - box.y - box.h) * 100}%` }} />
                 <div className="pointer-events-none absolute bg-ink/40" style={{ left: 0, top: `${box.y * 100}%`, width: `${box.x * 100}%`, height: `${box.h * 100}%` }} />
                 <div className="pointer-events-none absolute bg-ink/40" style={{ left: `${(box.x + box.w) * 100}%`, top: `${box.y * 100}%`, right: 0, height: `${box.h * 100}%` }} />
-                {/* 裁剪框 + 三分线 */}
+                {/* 裁剪框 + 三分线（白线 + 细黑影：深浅照片上都可见） */}
                 <div
                   data-role="box"
                   className="absolute cursor-move border-2 border-ink shadow-[0_0_0_1px_rgba(245,244,241,0.9)]"
                   style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%` }}
                 >
-                  <div className="pointer-events-none absolute left-1/3 top-0 h-full w-px bg-white/50" />
-                  <div className="pointer-events-none absolute left-2/3 top-0 h-full w-px bg-white/50" />
-                  <div className="pointer-events-none absolute top-1/3 left-0 h-px w-full bg-white/50" />
-                  <div className="pointer-events-none absolute top-2/3 left-0 h-px w-full bg-white/50" />
+                  <div className="pointer-events-none absolute left-1/3 top-0 h-full w-px bg-white/70 shadow-[0_0_0_1px_rgba(17,17,17,0.45)]" />
+                  <div className="pointer-events-none absolute left-2/3 top-0 h-full w-px bg-white/70 shadow-[0_0_0_1px_rgba(17,17,17,0.45)]" />
+                  <div className="pointer-events-none absolute top-1/3 left-0 h-px w-full bg-white/70 shadow-[0_0_0_1px_rgba(17,17,17,0.45)]" />
+                  <div className="pointer-events-none absolute top-2/3 left-0 h-px w-full bg-white/70 shadow-[0_0_0_1px_rgba(17,17,17,0.45)]" />
                 </div>
-                {/* 角部缩放 handle */}
+                {/* 角部缩放 handle：一律用 left/top 绝对定位 + translate(-50%,-50%) 居中，
+                    避免 right/bottom 与 translate 方向相反导致的偏移 */}
                 {(
                   [
-                    ['nw', 'left', 'top', 'nwse-resize'],
-                    ['ne', 'right', 'top', 'nesw-resize'],
-                    ['sw', 'left', 'bottom', 'nesw-resize'],
-                    ['se', 'right', 'bottom', 'nwse-resize'],
+                    ['nw', 'left', 'top'],
+                    ['ne', 'right', 'top'],
+                    ['sw', 'left', 'bottom'],
+                    ['se', 'right', 'bottom'],
                   ] as const
                 ).map(([h, l, t]) => (
                   <div
                     key={h}
                     data-handle={h}
-                    className="absolute h-4 w-4 rounded-full border-2 border-ink bg-paper"
+                    className="absolute h-5 w-5 rounded-full border-2 border-ink bg-paper transition-transform duration-150 hover:scale-125"
                     style={{
-                      [l]: `${(l === 'left' ? box.x : box.x + box.w) * 100}%`,
-                      [t]: `${(t === 'top' ? box.y : box.y + box.h) * 100}%`,
+                      left: `${(l === 'left' ? box.x : box.x + box.w) * 100}%`,
+                      top: `${(t === 'top' ? box.y : box.y + box.h) * 100}%`,
                       transform: 'translate(-50%, -50%)',
                       cursor: `${t}-resize`,
                     }}
@@ -286,7 +307,9 @@ export function CropModal({ photo, onClose }: Props) {
           ))}
           <div className="flex-1" />
           {imgSize && (
-            <span className="mono text-muted">导出 {boxPixelText(box, imgSize.nw, imgSize.nh)}</span>
+            <span className="font-mono text-[11px] normal-case tracking-normal text-muted tabular-nums">
+              导出 {boxPixelText(box, imgSize.nw, imgSize.nh)}
+            </span>
           )}
         </div>
 
