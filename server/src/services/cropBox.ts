@@ -111,17 +111,29 @@ export function boxToPixelExtract(box: Box, imgW: number, imgH: number) {
 
 /**
  * 把模型输出的框当作「主体位置 + 大致范围」的语义信号，生成几何正确的裁剪框：
- * - 以模型框的中心为中心，取该比例下内接画面的最大框；
- * - 按模型框面积占最大框的比例等比缩放（不低于原图 20% 面积对应的尺度）；
- * - 模型没给框 / 框非法 → 该比例居中最大框。
+ * - 以模型指认的主体位置为中心（优先用显式的 subject 坐标，否则用框中心），
+ *   取该比例下内接画面的最大框；
+ * - 按模型框面积占最大框的比例等比缩放（不低于 minArea 对应的尺度）；
+ * - 没有任何信号 → 该比例居中最大框。
  *
  * 为什么 AI 建议不走 normalizeBox：模型并不知道原图宽高比，输出的框比例几乎不可能
  * 精确匹配所选 ratio；normalizeBox 会"保持中心强行压扁/拉高"，框很容易被推离主体。
  * 这里只信任模型指认的"主体在哪、想裁多大"，几何精度由服务端保证。
  */
-export function boxFromModelHint(raw: unknown, ratio: Ratio, imgW: number, imgH: number): Box {
+export function boxFromModelHint(
+  raw: unknown,
+  ratio: Ratio,
+  imgW: number,
+  imgH: number,
+  subject?: { x: number; y: number } | null,
+  minArea = 0.2,
+): Box {
   const r = normRatio(ratio, imgW, imgH);
-  const valid =
+
+  // 主体坐标优先：显式指认 > 框中心 > 画面正中
+  const hasSubject =
+    subject != null && Number.isFinite(subject.x) && Number.isFinite(subject.y);
+  const boxValid =
     raw !== null &&
     typeof raw === 'object' &&
     Number.isFinite((raw as Box).x) &&
@@ -129,18 +141,18 @@ export function boxFromModelHint(raw: unknown, ratio: Ratio, imgW: number, imgH:
     Number.isFinite((raw as Box).w) &&
     Number.isFinite((raw as Box).h);
 
-  if (!valid) return fitRatioBox(0.5, 0.5, r);
+  if (!hasSubject && !boxValid) return fitRatioBox(0.5, 0.5, r);
 
-  const b = raw as Box;
-  const cx = clamp(b.x + b.w / 2, 0, 1); // 模型指认的主体中心
-  const cy = clamp(b.y + b.h / 2, 0, 1);
+  const b = (boxValid ? raw : { x: 0.5, y: 0.5, w: 1, h: 1 }) as Box;
+  const cx = hasSubject ? clamp(subject!.x, 0, 1) : clamp(b.x + b.w / 2, 0, 1);
+  const cy = hasSubject ? clamp(subject!.y, 0, 1) : clamp(b.y + b.h / 2, 0, 1);
   const max = fitRatioBox(cx, cy, r);
   const maxArea = Math.max(max.w * max.h, 1e-6);
 
   // 只取"想裁多大"的面积信号，不受模型框形状与比例误差干扰
   const hintArea = clamp(b.w * b.h, 0.01, 1);
   let scale = Math.sqrt(hintArea / maxArea);
-  scale = Math.max(scale, Math.sqrt(0.2 / maxArea)); // 面积不低于原图 20%
+  scale = Math.max(scale, Math.sqrt(minArea / maxArea)); // 面积不低于下限
   scale = Math.min(scale, 1);
 
   const w = max.w * scale;

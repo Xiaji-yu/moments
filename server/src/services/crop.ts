@@ -87,11 +87,13 @@ export async function suggestCropForPhoto(
   }
   const raw = parsed.success
     ? parsed.data
-    : { ratio: 'original' as Ratio, box: null, reasoning: '构图建议生成失败，请重试' }; // 降级
+    : { ratio: 'original' as Ratio, box: null, subject: null, reasoning: '构图建议生成失败，请重试' }; // 降级
 
-  // AC-F6-2：AI 建议只信任「主体位置 + 大致范围」，几何精度由服务端保证
+  // AC-F6-2：AI 建议只信任「主体位置 + 大致范围」，几何精度由服务端保证。
+  // subject 坐标优先于框中心（模型显式指认的主体比它顺手画的框更可靠）；
+  // 面积下限取 30%：20% 会允许裁出细条，不符合"发朋友圈"的实际需要。
   const ratio = RATIOS.includes(raw.ratio as Ratio) ? (raw.ratio as Ratio) : 'original';
-  const box = boxFromModelHint(raw.box, ratio, photo.width, photo.height);
+  const box = boxFromModelHint(raw.box, ratio, photo.width, photo.height, raw.subject, 0.3);
 
   const reasoning = raw.reasoning.slice(0, 60);
 

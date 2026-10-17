@@ -84,7 +84,8 @@ export const mockProvider: VisionProvider = {
       ratio === 'original'
         ? '保留原始比例，收紧画面剔除边缘干扰，主体更突出。'
         : `采用 ${ratio} 比例二次构图，主体置于三分点附近，剔除边缘干扰。`;
-    return { data: { ratio, box, reasoning }, usage: fakeUsage() };
+    // subject 与框中心一致：mock 不识别画面内容，但输出结构与真实 provider 保持相同
+    return { data: { ratio, subject: { x: cx, y: cy }, box, reasoning }, usage: fakeUsage() };
   },
 
   async generateCaptions(input: CaptionInput): Promise<ProviderResult<string[]>> {

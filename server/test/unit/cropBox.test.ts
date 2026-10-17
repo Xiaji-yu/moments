@@ -183,4 +183,30 @@ describe('boxFromModelHint（AI 建议：只信任主体位置与大致范围）
     expect(boxFromModelHint({ x: 'a', y: 0, w: 1, h: 1 }, '1:1', IMG_W, IMG_H)).toEqual(centered);
     expect(boxFromModelHint(undefined, '1:1', IMG_W, IMG_H)).toEqual(centered);
   });
+
+  it('subject 坐标优先于框中心（模型显式指认的主体更可靠）', () => {
+    // 框中心在画面正中，但 subject 指认主体在左上 (0.2, 0.25) → 输出框中心应跟随 subject
+    const box = boxFromModelHint({ x: 0.3, y: 0.3, w: 0.4, h: 0.4 }, 'original', IMG_W, IMG_H, {
+      x: 0.2,
+      y: 0.25,
+    });
+    expect(box.x + box.w / 2).toBeCloseTo(0.2, 2);
+    expect(box.y + box.h / 2).toBeCloseTo(0.25, 2);
+  });
+
+  it('只有 subject 没有框时，用主体位置生成该位置的最大内接框', () => {
+    const box = boxFromModelHint(null, 'original', IMG_W, IMG_H, { x: 0.15, y: 0.8 });
+    expect(box.x + box.w / 2).toBeCloseTo(0.15, 2);
+    expect(box.y + box.h / 2).toBeCloseTo(0.8, 2);
+    // 主体在角落时，比例正确的内接框几何上限本身就小（不能出界、不能破坏比例）
+    const max = fitRatioBox(0.15, 0.8, normRatio('original', IMG_W, IMG_H));
+    expect(box.w * box.h).toBeCloseTo(max.w * max.h, 6);
+    expect(inFrame(box)).toBe(true);
+  });
+
+  it('面积下限可调：AI 建议传 30% 时不会裁出细条', () => {
+    // 模型只想要很小的框（面积 5%），minArea=0.3 应把它抬到 30%
+    const box = boxFromModelHint({ x: 0.45, y: 0.45, w: 0.22, h: 0.22 }, 'original', IMG_W, IMG_H, null, 0.3);
+    expect(box.w * box.h).toBeGreaterThanOrEqual(0.3 - 1e-6);
+  });
 });

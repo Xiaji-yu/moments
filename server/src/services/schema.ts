@@ -18,6 +18,12 @@ export const CropSuggestionSchema = z.object({
     .object({ x: z.coerce.number(), y: z.coerce.number(), w: z.coerce.number(), h: z.coerce.number() })
     .nullable()
     .default(null),
+  /** 最主要主体的归一化中心坐标；模型必须给出，服务端优先以它定位裁剪框 */
+  subject: z
+    .object({ x: z.coerce.number(), y: z.coerce.number() })
+    .nullable()
+    .catch(null)
+    .default(null),
   reasoning: z.coerce.string().min(1).max(60),
 });
 
