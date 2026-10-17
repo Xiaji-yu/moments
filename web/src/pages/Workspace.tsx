@@ -669,15 +669,15 @@ export default function Workspace() {
             )}
           </div>
 
-          {/* 照片网格：无缝边框拼出的表格感 */}
+          {/* 照片网格：独立小卡片 + 间距（照片有内容，不能像文字卡片那样无缝紧贴） */}
           {photos.length === 0 ? (
             <p className="mono py-16 text-center text-muted">NO PHOTOS · 先导入一批吧</p>
           ) : (
-            <div className="grid grid-cols-2 border-l border-t border-line sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {photos.map((p) => (
                 <div
                   key={p.id}
-                  className="group relative border-r border-b border-line bg-paper transition-colors duration-300 hover:bg-paper-2"
+                  className="group relative border border-line bg-paper transition-colors duration-300 hover:bg-paper-2"
                 >
                   <div className="aspect-square">
                     <PhotoThumb photoId={p.id} />
@@ -779,13 +779,13 @@ export default function Workspace() {
                 <h2 className="sec-head__title">🏆 AI 推荐 {result.selected.length} 张</h2>
                 <span className="mono ml-auto text-muted">TOP SELECTION</span>
               </div>
-              <div className="grid grid-cols-2 border-l border-t border-line sm:grid-cols-3 md:grid-cols-5">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
                 {result.selected.map((s) => {
                   const p = photos.find((x) => x.id === s.photoId);
                   return (
                     <div
                       key={s.photoId}
-                      className="relative border-r border-b border-line bg-paper transition-colors duration-300 hover:bg-paper-2"
+                      className="relative border border-line bg-paper transition-colors duration-300 hover:bg-paper-2"
                     >
                       <div className="relative aspect-square">
                         <PhotoThumb photoId={s.photoId} />
