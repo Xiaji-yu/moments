@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getProvider, listProviders } from '../../src/services/providers/registry.js';
+import { defaultProviderId, getProvider, listProviders } from '../../src/services/providers/registry.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -68,5 +68,34 @@ describe('getProvider', () => {
       expect((err as Error).message).toBe('该模型供应商不可用或未配置');
     }
     void httpErr;
+  });
+});
+
+describe('defaultProviderId（新建会话默认供应商）', () => {
+  const cfg = (id: string, kind: 'mock' | 'openai') => ({
+    id,
+    kind,
+    label: id,
+    models: [`${id}-model`],
+    defaultModel: `${id}-model`,
+  });
+
+  it('有真实供应商时不用 mock', () => {
+    expect(defaultProviderId([cfg('mock', 'mock'), cfg('zhipu', 'openai')])).toBe('zhipu');
+  });
+
+  it('只有 mock（未配置 Key）时兜底 mock', () => {
+    expect(defaultProviderId([cfg('mock', 'mock')])).toBe('mock');
+    expect(defaultProviderId([])).toBe('mock');
+  });
+
+  it('不传参时按当前环境变量计算', () => {
+    vi.stubEnv('ZHIPU_API_KEY', 'k');
+    vi.stubEnv('ZHIPU_MODELS', 'glm-4.5v');
+    expect(defaultProviderId()).toBe('zhipu');
+    vi.stubEnv('ZHIPU_API_KEY', '');
+    vi.stubEnv('OPENAI_API_KEY', '');
+    vi.stubEnv('CUSTOM_BASE_URL', '');
+    expect(defaultProviderId()).toBe('mock');
   });
 });

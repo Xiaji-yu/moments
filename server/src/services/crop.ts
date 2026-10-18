@@ -4,7 +4,7 @@ import { db } from '../db.js';
 import { httpErr } from '../util.js';
 import { getProvider } from './providers/registry.js';
 import { CropSuggestionSchema } from './schema.js';
-import { normalizeBox, boxFromModelHint, normRatio, RATIOS, type Ratio } from './cropBox.js';
+import { normalizeBox, boxFromModelHint, normRatio, checkCropConsistency, RATIOS, type Ratio } from './cropBox.js';
 import { photoDir } from './storage.js';
 import { config } from '../config.js';
 import { recordUsage } from './usage.js';
@@ -16,7 +16,16 @@ interface SuggestionRow {
   box_w: number;
   box_h: number;
   reasoning: string;
+  model: string | null;
+  version: number;
+  warnings: string;
 }
+
+/**
+ * 建议的算法版本。改了 prompt / 几何策略 / 一致性规则就 +1：
+ * 生成批次会把 version 不同的旧建议视为过期并重算（crop_suggestions.version）。
+ */
+export const CROP_SUGGEST_VERSION = 2;
 
 export interface CropProgress {
   running: boolean;
@@ -95,6 +104,7 @@ export async function suggestCropForPhoto(
   // 面积下限取 30%：20% 会允许裁出细条，不符合"发朋友圈"的实际需要。
   const ratio = RATIOS.includes(raw.ratio as Ratio) ? (raw.ratio as Ratio) : 'original';
   const box = boxFromModelHint(raw.box, ratio, photo.width, photo.height, raw.subject, 0.3);
+  const warnings = checkCropConsistency(raw.reasoning, box, ratio, photo.width, photo.height);
 
   const reasoning = raw.reasoning.slice(0, 60);
 
@@ -123,17 +133,31 @@ export async function suggestCropForPhoto(
           norm: { x: +box.x.toFixed(4), y: +box.y.toFixed(4), w: +box.w.toFixed(4), h: +box.h.toFixed(4) },
           area: +(box.w * box.h).toFixed(4),
         },
+        warnings,
         usage: res.usage,
       }),
   );
 
   db.prepare(
-    `INSERT INTO crop_suggestions (photo_id, ratio, box_x, box_y, box_w, box_h, reasoning, model)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO crop_suggestions (photo_id, ratio, box_x, box_y, box_w, box_h, reasoning, model, version, warnings)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(photo_id) DO UPDATE SET
        ratio = excluded.ratio, box_x = excluded.box_x, box_y = excluded.box_y,
-       box_w = excluded.box_w, box_h = excluded.box_h, reasoning = excluded.reasoning, model = excluded.model`,
-  ).run(photoId, ratio, box.x, box.y, box.w, box.h, reasoning, input.model);
+       box_w = excluded.box_w, box_h = excluded.box_h, reasoning = excluded.reasoning,
+       model = excluded.model, version = excluded.version, warnings = excluded.warnings,
+       created_at = datetime('now')`,
+  ).run(
+    photoId,
+    ratio,
+    box.x,
+    box.y,
+    box.w,
+    box.h,
+    reasoning,
+    input.model,
+    CROP_SUGGEST_VERSION,
+    JSON.stringify(warnings),
+  );
   recordUsage(sessionId, photoId, 'crop', input.model, res.usage);
 }
 
@@ -157,18 +181,20 @@ export function startBatchCropSuggest(
     photos = photos.filter((p) => ids.has(p.id));
   }
   if (!force) {
-    // 跳过本会话已有建议的（crop_suggestions 没有 session_id，需 join photos 限定范围）
-    const having = new Set(
+    // 跳过「当前版本 + 同一模型」已生成过的建议；旧版本（含 mock 时代）或换模型后的
+    // 建议一律视为过期并重算，避免 UI 里同屏混着不同来源的框。
+    const effectiveModel = model || getProvider(providerId).defaultModel;
+    const upToDate = new Set(
       (
         db
           .prepare(
             `SELECT cs.photo_id FROM crop_suggestions cs JOIN photos p ON p.id = cs.photo_id
-             WHERE p.session_id = ?`,
+             WHERE p.session_id = ? AND cs.version = ? AND cs.model = ?`,
           )
-          .all(sessionId) as Array<{ photo_id: string }>
+          .all(sessionId, CROP_SUGGEST_VERSION, effectiveModel) as Array<{ photo_id: string }>
       ).map((r) => r.photo_id),
     );
-    photos = photos.filter((p) => !having.has(p.id));
+    photos = photos.filter((p) => !upToDate.has(p.id));
   }
 
   // 没有可生成的：复位任务记录，避免前端沿用上次的 done/total 误报「完成 N 张」

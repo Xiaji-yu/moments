@@ -38,6 +38,12 @@ export interface CropSuggestion {
   ratio: Ratio;
   box: Box;
   reasoning: string;
+  /** 框与理由不一致的可读提示（服务端生成时计算，不阻断保存） */
+  warnings?: string[];
+  /** 生成该建议的模型；与当前会话模型不同即视为旧建议 */
+  model?: string | null;
+  /** 旧算法版本或旧模型生成：下次批量生成会自动重算 */
+  stale?: boolean;
 }
 
 export interface Crop {

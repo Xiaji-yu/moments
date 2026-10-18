@@ -58,6 +58,16 @@ export function listProviders(): ProviderCfg[] {
   return list;
 }
 
+/**
+ * 新建会话的默认供应商：优先真实供应商，mock 只作最后兜底。
+ * mock 的分数/标签/框是按文件名哈希随机生成的，默认落到它身上会让人误以为「AI 严重漂移」，
+ * 所以只允许用户主动选择，不再作为默认值。
+ */
+export function defaultProviderId(providers: ProviderCfg[] = listProviders()): string {
+  const real = providers.find((p) => p.kind !== 'mock');
+  return (real ?? providers[0])?.id ?? 'mock';
+}
+
 export function getProvider(id: string): VisionProvider {
   const cfg = listProviders().find((p) => p.id === id);
   if (!cfg) throw httpErr(400, '该模型供应商不可用或未配置');

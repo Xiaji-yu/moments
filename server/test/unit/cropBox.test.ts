@@ -3,6 +3,7 @@ import {
   RATIOS,
   boxFromModelHint,
   boxToPixelExtract,
+  checkCropConsistency,
   fitRatioBox,
   normRatio,
   normalizeBox,
@@ -208,5 +209,38 @@ describe('boxFromModelHint（AI 建议：只信任主体位置与大致范围）
     // 模型只想要很小的框（面积 5%），minArea=0.3 应把它抬到 30%
     const box = boxFromModelHint({ x: 0.45, y: 0.45, w: 0.22, h: 0.22 }, 'original', IMG_W, IMG_H, null, 0.3);
     expect(box.w * box.h).toBeGreaterThanOrEqual(0.3 - 1e-6);
+  });
+});
+
+describe('checkCropConsistency（框与理由一致性校验）', () => {
+  const b = (x: number, y: number, w: number, h: number): Box => ({ x, y, w, h });
+
+  it('框与理由一致时不产生警告', () => {
+    expect(checkCropConsistency('聚焦猫脸，裁去顶部水印', b(0.1, 0.2, 0.7, 0.7), '1:1', 3000, 4000)).toEqual([]);
+  });
+
+  it('理由称裁去顶部但框仍保留顶部 → 顶部警告', () => {
+    const w = checkCropConsistency('裁去顶部水印与杂物', b(0, 0.02, 1, 0.7), '1:1', 3000, 4000);
+    expect(w.some((x) => x.includes('顶部'))).toBe(true);
+  });
+
+  it('理由称三分点但框中心在画面正中 → 三分警告', () => {
+    const w = checkCropConsistency('双眼落在三分线，主体居中突出', b(0.15, 0.15, 0.7, 0.7), '1:1', 3000, 4000);
+    expect(w.some((x) => x.includes('三分点'))).toBe(true);
+  });
+
+  it('理由称特写但框覆盖 80% 以上 → 近似原图警告', () => {
+    const w = checkCropConsistency('聚焦特写猫脸', b(0.02, 0.02, 0.96, 0.96), '1:1', 3000, 4000);
+    expect(w.some((x) => x.includes('80%'))).toBe(true);
+  });
+
+  it('比例与原图一致 → 提示没有改变构图', () => {
+    const w = checkCropConsistency('方形构图', b(0, 0, 1, 1), '4:3', 3000, 2250);
+    expect(w.some((x) => x.includes('没有改变构图'))).toBe(true);
+  });
+
+  it('竖图选 9:16 且与原图比例不同 → 不误报', () => {
+    const w = checkCropConsistency('竖构图突出全身', b(0.1, 0, 0.8, 1), '9:16', 3000, 4000);
+    expect(w).toEqual([]);
   });
 });

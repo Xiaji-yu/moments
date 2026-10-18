@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db.js';
+import { CROP_SUGGEST_VERSION } from '../../src/services/crop.js';
 import {
   createSession,
   getUserId,
@@ -261,5 +262,144 @@ describe('批量构图建议 + 进度（AC-F6-1）', () => {
       ).json();
       return !p.running;
     });
+  });
+});
+
+describe('构图建议：请求里的 model + 旧建议自动重算', () => {
+  const progressOf = async (sid: string) =>
+    (await app.inject({ method: 'GET', url: `/api/sessions/${sid}/crop-progress`, headers: auth(token) })).json() as {
+      running: boolean;
+      total: number;
+      done: number;
+    };
+
+  it('批量接口使用请求里的 model 并回写会话', async () => {
+    const s = (await createSession(app, token)).id;
+    const uid = getUserId('crop_user');
+    await uploadDonePhoto(app, token, s, uid, {
+      name: 'prov_a.jpg',
+      buf: await makeJpeg(800, 600, { r: 9, g: 9, b: 200 }),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${s}/crop-suggest`,
+      payload: { provider: 'mock', model: 'mock-vision-alt' },
+      headers: auth(token),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, provider: 'mock', model: 'mock-vision-alt' });
+
+    await waitFor(async () => {
+      const p = await progressOf(s);
+      return !p.running && p.done === 1 ? p : null;
+    });
+
+    const row = db
+      .prepare(
+        `SELECT cs.model AS model, cs.version AS version FROM crop_suggestions cs
+         JOIN photos p ON p.id = cs.photo_id WHERE p.session_id = ?`,
+      )
+      .get(s) as { model: string; version: number };
+    expect(row.model).toBe('mock-vision-alt');
+    expect(row.version).toBe(CROP_SUGGEST_VERSION);
+
+    const sess = db.prepare('SELECT provider, model FROM sessions WHERE id = ?').get(s) as {
+      provider: string;
+      model: string;
+    };
+    expect(sess).toMatchObject({ provider: 'mock', model: 'mock-vision-alt' });
+  });
+
+  it('旧版本建议在非 force 批次里自动重算', async () => {
+    const s = (await createSession(app, token)).id;
+    const uid = getUserId('crop_user');
+    await uploadDonePhoto(app, token, s, uid, {
+      name: 'stale_a.jpg',
+      buf: await makeJpeg(700, 500, { r: 200, g: 30, b: 30 }),
+    });
+
+    await app.inject({ method: 'POST', url: `/api/sessions/${s}/crop-suggest`, payload: {}, headers: auth(token) });
+    await waitFor(async () => {
+      const p = await progressOf(s);
+      return !p.running && p.done === 1 ? p : null;
+    });
+
+    // 模拟升级前留下的旧建议
+    db.prepare(
+      `UPDATE crop_suggestions SET version = 0, reasoning = '旧建议'
+       WHERE photo_id IN (SELECT id FROM photos WHERE session_id = ?)`,
+    ).run(s);
+
+    const second = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${s}/crop-suggest`,
+      payload: {},
+      headers: auth(token),
+    });
+    expect(second.statusCode).toBe(200);
+    await waitFor(async () => {
+      const p = await progressOf(s);
+      return !p.running && p.done >= 1 ? p : null;
+    });
+
+    const row = db
+      .prepare(
+        `SELECT cs.version AS version, cs.reasoning AS reasoning FROM crop_suggestions cs
+         JOIN photos p ON p.id = cs.photo_id WHERE p.session_id = ?`,
+      )
+      .get(s) as { version: number; reasoning: string };
+    expect(row.version).toBe(CROP_SUGGEST_VERSION);
+    expect(row.reasoning).not.toBe('旧建议');
+  });
+
+  it('当前版本 + 同模型已就绪的建议会被跳过（total=0）', async () => {
+    const s = (await createSession(app, token)).id;
+    const uid = getUserId('crop_user');
+    await uploadDonePhoto(app, token, s, uid, {
+      name: 'skip_a.jpg',
+      buf: await makeJpeg(600, 600, { r: 30, g: 120, b: 30 }),
+    });
+
+    await app.inject({ method: 'POST', url: `/api/sessions/${s}/crop-suggest`, payload: {}, headers: auth(token) });
+    await waitFor(async () => {
+      const p = await progressOf(s);
+      return !p.running && p.done === 1 ? p : null;
+    });
+
+    await app.inject({ method: 'POST', url: `/api/sessions/${s}/crop-suggest`, payload: {}, headers: auth(token) });
+    const p = await progressOf(s);
+    expect(p.total).toBe(0);
+    expect(p.running).toBe(false);
+  });
+
+  it('GET /photos/:id/crop 返回归一化建议（box 对象 + warnings/stale）', async () => {
+    const photoId = await seedDonePhoto('norm_shape.jpg');
+    await app.inject({
+      method: 'POST',
+      url: `/api/photos/${photoId}/crop-suggest`,
+      payload: { provider: 'mock', model: 'mock-vision' },
+      headers: auth(token),
+    });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/photos/${photoId}/crop`,
+      headers: auth(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const sug = res.json().suggestion as {
+      box: { x: number; y: number; w: number; h: number };
+      warnings: string[];
+      stale: boolean;
+    };
+    expect(sug.box).toMatchObject({
+      x: expect.any(Number),
+      y: expect.any(Number),
+      w: expect.any(Number),
+      h: expect.any(Number),
+    });
+    expect(sug.box.w).toBeGreaterThan(0);
+    expect(Array.isArray(sug.warnings)).toBe(true);
+    expect(sug.stale).toBe(false);
   });
 });

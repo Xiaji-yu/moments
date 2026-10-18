@@ -164,3 +164,54 @@ export function boxFromModelHint(
     h,
   };
 }
+
+/**
+ * 框与理由一致性校验。
+ *
+ * 模型的 reasoning 和 box/subject 是同一次生成里的两段独立内容，常见的"漂移"是：
+ * 文案声称「裁去顶部水印」「双眼落在三分线」「聚焦特写」，但服务端按 subject 重算后的
+ * 框其实是居中、贴满、面积接近原图的。这里不阻断保存，只把矛盾点以可读文本返回，
+ * 供接口与 UI 提示（配合 version 字段判断建议是否需要重算）。
+ */
+export function checkCropConsistency(
+  reasoning: string,
+  box: Box,
+  ratio: Ratio,
+  imgW: number,
+  imgH: number,
+): string[] {
+  const warnings: string[] = [];
+  const edge = 0.06;
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+
+  if (/(水印|日期|顶部|上方)/.test(reasoning) && box.y < edge) {
+    warnings.push('理由称裁去顶部（水印/杂物），但框仍保留顶部约 6%');
+  }
+  if (/(底部|下方|下边缘)/.test(reasoning) && box.y + box.h > 1 - edge) {
+    warnings.push('理由称裁去底部，但框仍保留底部约 6%');
+  }
+  if (/(左侧|左边)/.test(reasoning) && box.x < edge) {
+    warnings.push('理由称裁去左侧，但框仍保留左侧约 6%');
+  }
+  if (/(右侧|右边)/.test(reasoning) && box.x + box.w > 1 - edge) {
+    warnings.push('理由称裁去右侧，但框仍保留右侧约 6%');
+  }
+  if (/(三分(点|线|法|构图)|黄金分割)/.test(reasoning)) {
+    const nearThird = (v: number) => Math.abs(v - 1 / 3) <= 0.1 || Math.abs(v - 2 / 3) <= 0.1;
+    if (!nearThird(cx) && !nearThird(cy)) {
+      warnings.push('理由称三分点/三分线，但框中心不在三分线附近');
+    }
+  }
+  if (/(特写|聚焦|近距离)/.test(reasoning) && box.w * box.h > 0.8) {
+    warnings.push('理由称聚焦/特写，但框覆盖原图 80% 以上，接近原图');
+  }
+  if (ratio !== 'original' && imgW > 0 && imgH > 0) {
+    const target = ratioValue(ratio, imgW, imgH);
+    const own = imgW / imgH;
+    if (Math.abs(target / own - 1) < 0.02) {
+      warnings.push('所选比例与原图一致，建议等同于等比切线，没有改变构图');
+    }
+  }
+  return warnings;
+}

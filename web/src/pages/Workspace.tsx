@@ -121,8 +121,10 @@ export default function Workspace() {
         setMe(meInfo.username);
         const provs = (await api<{ providers: ProviderInfo[] }>('/providers')).providers;
         setProviders(provs);
-        setProviderId((prev) => prev || provs[0]?.id || '');
-        setModel((prev) => prev || provs[0]?.defaultModel || '');
+        // mock 的分数/标签/框是按文件名哈希随机生成的，只作为手动可选项，不作为默认
+        const def = provs.find((p) => p.id !== 'mock') ?? provs[0];
+        setProviderId((prev) => prev || def?.id || '');
+        setModel((prev) => prev || def?.defaultModel || '');
         const saved = localStorage.getItem('moments_session');
         if (saved) {
           try {
@@ -336,7 +338,11 @@ export default function Workspace() {
     try {
       await api(`/sessions/${sessionId}/crop-suggest`, {
         method: 'POST',
-        body: JSON.stringify(targetIds ? { photoIds: targetIds } : {}),
+        body: JSON.stringify({
+          provider: providerId,
+          model,
+          ...(targetIds ? { photoIds: targetIds } : {}),
+        }),
       });
       setSuggesting(true);
       stopCropPoll();
@@ -475,21 +481,25 @@ export default function Workspace() {
 
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-10 border-b border-line bg-paper">
-          <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 lg:px-8">
+          <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:gap-3 lg:px-8">
             <button
               onClick={() => setSidebarOpen((v) => !v)}
               title="会话列表"
-              className="border border-line px-2 py-1 text-ink transition-colors duration-300 hover:bg-ink hover:text-paper"
+              className="shrink-0 border border-line px-2 py-1 text-ink transition-colors duration-300 hover:bg-ink hover:text-paper"
             >
               ☰
             </button>
-            <span className="text-lg font-semibold tracking-[-0.02em]">📷 Moments</span>
-            <span className="mono hidden text-muted sm:inline">AI PHOTO CURATION</span>
+            <span className="shrink-0 whitespace-nowrap text-lg font-semibold tracking-[-0.02em]">
+              📷 Moments
+            </span>
+            <span className="mono hidden shrink-0 whitespace-nowrap text-muted lg:inline">
+              AI PHOTO CURATION
+            </span>
             <div className="flex-1" />
             <select
               value={providerId}
               onChange={(e) => switchProvider(e.target.value)}
-              className="field mono w-auto py-1.5 text-[11px]"
+              className="field mono h-9 w-auto shrink-0 py-1.5 text-[11px]"
               aria-label="模型供应商"
             >
               {providers.map((p) => (
@@ -501,7 +511,7 @@ export default function Workspace() {
             <select
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              className="field mono hidden w-auto py-1.5 text-[11px] sm:block"
+              className="field mono hidden h-9 w-auto shrink-0 py-1.5 text-[11px] md:block"
               aria-label="模型"
             >
               {currentModels.map((m) => (
@@ -510,8 +520,11 @@ export default function Workspace() {
                 </option>
               ))}
             </select>
-            <span className="mono hidden text-muted md:inline">{me}</span>
-            <button onClick={logout} className="mono text-muted transition-colors hover:text-ink">
+            <span className="mono hidden max-w-32 truncate text-muted md:inline">{me}</span>
+            <button
+              onClick={logout}
+              className="mono shrink-0 whitespace-nowrap text-muted transition-colors hover:text-ink"
+            >
               退出
             </button>
           </div>
@@ -594,19 +607,24 @@ export default function Workspace() {
                 <span>取消</span>
               </button>
             )}
-            <label className="mono ml-2 text-muted">TOP N</label>
-            <select
-              value={n}
-              onChange={(e) => setN(Number(e.target.value))}
-              className="field mono w-auto py-1.5 text-[11px]"
-              aria-label="推荐张数"
-            >
-              {[1, 3, 4, 6, 9].map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
+            <div className="flex shrink-0 items-center gap-2 sm:ml-1 sm:border-l sm:border-line-soft sm:pl-4">
+              <label className="mono shrink-0 text-muted" htmlFor="top-n">
+                TOP N
+              </label>
+              <select
+                id="top-n"
+                value={n}
+                onChange={(e) => setN(Number(e.target.value))}
+                className="field mono h-10 w-auto py-1.5 text-[11px]"
+                aria-label="推荐张数"
+              >
+                {[1, 3, 4, 6, 9].map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button
               onClick={() => void pick()}
               disabled={!analyzedAll || analyzing || busy}
@@ -677,44 +695,50 @@ export default function Workspace() {
               {photos.map((p) => (
                 <div
                   key={p.id}
-                  className="group relative border border-line bg-paper transition-colors duration-300 hover:bg-paper-2"
+                  className="group relative flex flex-col border border-line bg-paper transition-colors duration-300 hover:bg-paper-2"
                 >
-                  <div className="aspect-square">
+                  <div className="relative aspect-square">
                     <PhotoThumb photoId={p.id} />
-                  </div>
-                  <button
-                    onClick={() => setCropId(p.id)}
-                    title="二次构图"
-                    className="absolute top-1 left-1 flex h-6 w-6 items-center justify-center border border-line bg-paper text-xs text-ink transition-colors duration-300 hover:bg-ink hover:text-paper"
-                  >
-                    ✂
-                  </button>
-                  <button
-                    onClick={() => void removePhoto(p.id)}
-                    title="删除"
-                    className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center border border-line bg-paper text-xs text-ink transition-colors duration-300 hover:bg-ink hover:text-paper"
-                  >
-                    ×
-                  </button>
-                  {p.crop ? (
-                    <span
-                      title={p.crop.source === 'ai' ? '已应用 LLM 的二次构图建议' : '手动调整的二次构图'}
-                      className="mono absolute bottom-1 left-1 bg-ink px-1.5 py-0.5 text-[9px] text-paper"
+                    <button
+                      onClick={() => setCropId(p.id)}
+                      title="二次构图"
+                      className="absolute top-1 left-1 flex h-6 w-6 items-center justify-center border border-line bg-paper text-xs text-ink transition-colors duration-300 hover:bg-ink hover:text-paper"
                     >
-                      ✂ {p.crop.source === 'ai' ? 'AI 构图' : '手动构图'}
-                      {p.crop.ratio !== 'original' ? ` · ${p.crop.ratio}` : ''}
-                    </span>
-                  ) : (
-                    p.cropSuggestion && (
+                      ✂
+                    </button>
+                    <button
+                      onClick={() => void removePhoto(p.id)}
+                      title="删除"
+                      className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center border border-line bg-paper text-xs text-ink transition-colors duration-300 hover:bg-ink hover:text-paper"
+                    >
+                      ×
+                    </button>
+                    {p.crop ? (
                       <span
-                        title={`LLM 建议：${p.cropSuggestion.reasoning}`}
-                        className="mono absolute bottom-1 left-1 border border-ink bg-paper px-1.5 py-0.5 text-[9px] font-medium text-ink"
+                        title={p.crop.source === 'ai' ? '已应用 LLM 的二次构图建议' : '手动调整的二次构图'}
+                        className="mono absolute bottom-1 left-1 max-w-[calc(100%-0.5rem)] truncate bg-ink px-1.5 py-0.5 text-[9px] text-paper"
                       >
-                        AI 建议待应用
+                        ✂ {p.crop.source === 'ai' ? 'AI 构图' : '手动构图'}
+                        {p.crop.ratio !== 'original' ? ` · ${p.crop.ratio}` : ''}
                       </span>
-                    )
-                  )}
-                  <div className="px-2.5 py-2">
+                    ) : (
+                      p.cropSuggestion && (
+                        <span
+                          title={`LLM 建议：${p.cropSuggestion.reasoning}${
+                            p.cropSuggestion.stale ? '（旧版本/旧模型生成，下次生成会自动重算）' : ''
+                          }`}
+                          className={`mono absolute bottom-1 left-1 max-w-[calc(100%-0.5rem)] truncate border px-1.5 py-0.5 text-[9px] font-medium ${
+                            p.cropSuggestion.stale
+                              ? 'border-line-soft bg-paper text-muted'
+                              : 'border-ink bg-paper text-ink'
+                          }`}
+                        >
+                          {p.cropSuggestion.stale ? '旧建议待应用' : 'AI 建议待应用'}
+                        </span>
+                      )
+                    )}
+                  </div>
+                  <div className="flex flex-1 flex-col px-2.5 py-2">
                     <p className="truncate text-xs text-ink-soft" title={p.filename}>
                       {p.filename}
                     </p>
@@ -757,7 +781,7 @@ export default function Workspace() {
                       </p>
                     )}
                     {p.analysis && (
-                      <div className="mt-1.5 flex justify-end">
+                      <div className="mt-auto flex justify-end pt-1.5">
                         <FeedbackButtons
                           photoId={p.id}
                           value={p.analysis.feedback ?? 0}
@@ -852,6 +876,8 @@ export default function Workspace() {
           {cropId && (
             <CropModal
               photo={photos.find((p) => p.id === cropId)!}
+              providerId={providerId}
+              model={model}
               onClose={(refreshed) => {
                 setCropId(null);
                 if (refreshed && sessionId) {

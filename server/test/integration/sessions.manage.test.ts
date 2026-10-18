@@ -29,7 +29,7 @@ afterAll(async () => {
 const auth = (t: string) => ({ authorization: `Bearer ${t}` });
 
 describe('会话管理（列表 / 重命名 / 删除）', () => {
-  it('GET /api/sessions 带 title 与 photo_count，按创建时间倒序', async () => {
+  it('GET /api/sessions 带 title 与 photoCount，按创建时间倒序', async () => {
     const s1 = (await createSession(app, token)).id;
     const s2 = (await createSession(app, token)).id;
     await uploadDonePhoto(app, token, s1, userId, {
@@ -42,10 +42,10 @@ describe('会话管理（列表 / 重命名 / 删除）', () => {
     const list = res.json().sessions as Array<{
       id: string;
       title: string | null;
-      photo_count: number;
+      photoCount: number;
     }>;
     expect(list.map((s) => s.id)).toEqual([s2, s1]); // 新的在前
-    expect(list.find((s) => s.id === s1)!.photo_count).toBe(1);
+    expect(list.find((s) => s.id === s1)!.photoCount).toBe(1);
     expect(list.find((s) => s.id === s1)!.title).toBeNull();
   });
 

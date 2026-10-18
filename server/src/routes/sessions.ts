@@ -14,11 +14,12 @@ import {
   startBatchCropSuggest,
   getCropProgress,
   requestCancelBatchCrop,
+  CROP_SUGGEST_VERSION,
 } from '../services/crop.js';
 import { generateCaptions, readCaptions, saveCaptions } from '../services/caption.js';
 import { getSessionUsage } from '../services/usage.js';
 import { ensureDir, photoDir, sessionDir } from '../services/storage.js';
-import { listProviders } from '../services/providers/registry.js';
+import { listProviders, defaultProviderId } from '../services/providers/registry.js';
 import { loadExportImage, safeFilename } from '../services/export.js';
 import { composeGrid } from '../services/grid.js';
 import { httpErr } from '../util.js';
@@ -55,6 +56,16 @@ async function discardFilePart(part: { file: NodeJS.ReadableStream }): Promise<v
   });
 }
 
+const safeJsonArray = (raw: unknown): string[] => {
+  if (typeof raw !== 'string' || !raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+};
+
 /** 取会话内已完成分析的照片（LEFT JOIN 已应用的裁剪），按需按 id 集合过滤/排序 */
 function loadExportRows(sessionId: string, photoIds?: string[]) {
   let rows = db
@@ -78,7 +89,8 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
   app.post('/', { preHandler: authPreHandler, config: { rateLimit: RL.light } }, async (req) => {
     const body = (req.body ?? {}) as { provider?: string };
     const providers = listProviders();
-    const provider = providers.find((p) => p.id === body.provider)?.id ?? providers[0].id;
+    const provider =
+      providers.find((p) => p.id === body.provider)?.id ?? defaultProviderId(providers);
     const model = providers.find((p) => p.id === provider)!.defaultModel;
     const id = nanoid(12);
     db.prepare('INSERT INTO sessions (id, user_id, provider, model) VALUES (?, ?, ?, ?)').run(
@@ -91,15 +103,32 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     return { id, provider, model };
   });
 
-  app.get('/', { preHandler: authPreHandler, config: { rateLimit: RL.light } }, async (req) => ({
-    sessions: db
+  app.get('/', { preHandler: authPreHandler, config: { rateLimit: RL.light } }, async (req) => {
+    const rows = db
       .prepare(
         `SELECT s.id, s.title, s.provider, s.model, s.created_at,
                 (SELECT COUNT(*) FROM photos p WHERE p.session_id = s.id) AS photo_count
          FROM sessions s WHERE s.user_id = ? ORDER BY s.created_at DESC, s.rowid DESC`,
       )
-      .all(req.user!.id),
-  }));
+      .all(req.user!.id) as Array<{
+      id: string;
+      title: string | null;
+      provider: string;
+      model: string | null;
+      created_at: string;
+      photo_count: number;
+    }>;
+    return {
+      sessions: rows.map((s) => ({
+        id: s.id,
+        title: s.title,
+        provider: s.provider,
+        model: s.model,
+        created_at: s.created_at,
+        photoCount: s.photo_count,
+      })),
+    };
+  });
 
   app.get('/:id', { preHandler: authPreHandler, config: { rateLimit: RL.light } }, async (req) => {
     const s = ownSession(req, (req.params as { id: string }).id);
@@ -107,6 +136,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       .prepare(
         `SELECT p.*, a.score AS a_score, a.tags AS a_tags, a.issues AS a_issues, a.reason AS a_reason, a.feedback AS a_feedback,
                 cs.ratio AS cs_ratio, cs.box_x AS cs_x, cs.box_y AS cs_y, cs.box_w AS cs_w, cs.box_h AS cs_h, cs.reasoning AS cs_reason,
+                cs.model AS cs_model, cs.version AS cs_version, cs.warnings AS cs_warnings,
                 c.ratio AS c_ratio, c.box_x AS c_x, c.box_y AS c_y, c.box_w AS c_w, c.box_h AS c_h, c.source AS c_source
          FROM photos p
          LEFT JOIN analyses a ON a.photo_id = p.id
@@ -143,6 +173,10 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
                 ratio: p.cs_ratio,
                 box: { x: p.cs_x, y: p.cs_y, w: p.cs_w, h: p.cs_h },
                 reasoning: p.cs_reason,
+                warnings: safeJsonArray(p.cs_warnings),
+                model: p.cs_model ?? null,
+                // 旧算法版本或换了模型的建议：前端提示「旧建议」，下次生成会自动重算
+                stale: p.cs_version !== CROP_SUGGEST_VERSION || (p.cs_model ?? '') !== (s.model ?? ''),
               },
         crop:
           p.c_ratio == null
@@ -329,10 +363,22 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     { preHandler: [authPreHandler, quotaGuard], config: { rateLimit: RL.model } },
     async (req) => {
       const s = ownSession(req, (req.params as { id: string }).id);
-      const body = (req.body ?? {}) as { force?: boolean; photoIds?: string[] };
+      const body = (req.body ?? {}) as {
+        provider?: string;
+        model?: string;
+        force?: boolean;
+        photoIds?: string[];
+      };
+      // 与 /analyze 一致：以请求里的供应商/模型为准（下拉框当前值），缺失时回退到会话值。
+      // 旧实现直接读 s.provider/s.model，会让「生成建议」偷偷用上一次分析用的模型。
+      const providers = listProviders();
+      const providerId = providers.find((p) => p.id === body.provider)?.id ?? s.provider;
+      const cfg = providers.find((p) => p.id === providerId)!;
+      const model = (typeof body.model === 'string' && body.model) || cfg.defaultModel;
+      db.prepare('UPDATE sessions SET provider = ?, model = ? WHERE id = ?').run(providerId, model, s.id);
       const photoIds = Array.isArray(body.photoIds) && body.photoIds.length > 0 ? body.photoIds : undefined;
-      startBatchCropSuggest(s.id, s.user_id, s.provider, s.model ?? '', !!body.force, photoIds);
-      return { ok: true };
+      startBatchCropSuggest(s.id, s.user_id, providerId, model, !!body.force, photoIds);
+      return { ok: true, provider: providerId, model };
     },
   );
 

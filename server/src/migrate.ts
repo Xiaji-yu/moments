@@ -128,6 +128,16 @@ CREATE TABLE IF NOT EXISTS crop_jobs (
     name: 'analysis_feedback',
     up: `ALTER TABLE analyses ADD COLUMN feedback INTEGER NOT NULL DEFAULT 0;`,
   },
+  {
+    // 建议的算法版本 + 一致性警告：旧版本（含 mock 时代）的建议在下次生成时自动重算，
+    // 前端也能据此提示「这条建议来自旧版本/旧模型」。
+    version: 5,
+    name: 'crop_suggestion_version',
+    up: `
+ALTER TABLE crop_suggestions ADD COLUMN version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE crop_suggestions ADD COLUMN warnings TEXT NOT NULL DEFAULT '[]';
+`,
+  },
 ];
 
 /** 应用所有未执行的迁移，返回当前 schema 版本 */

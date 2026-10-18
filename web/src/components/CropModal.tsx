@@ -5,6 +5,9 @@ import { RATIO_LABEL, RATIO_LIST, type Box, type CropSuggestion, type Photo, typ
 
 interface Props {
   photo: Photo;
+  /** 当前下拉框选中的供应商/模型：生成建议时显式带上，避免服务端偷偷用上次分析的模型 */
+  providerId: string;
+  model: string;
   onClose: (refreshed: boolean) => void;
 }
 
@@ -15,7 +18,7 @@ type DragState =
 
 const FULL_BOX: Box = { x: 0, y: 0, w: 1, h: 1 };
 
-export function CropModal({ photo, onClose }: Props) {
+export function CropModal({ photo, providerId, model, onClose }: Props) {
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [imgSize, setImgSize] = useState<{ nw: number; nh: number } | null>(null);
   const [suggestion, setSuggestion] = useState<CropSuggestion | null>(photo.cropSuggestion);
@@ -161,7 +164,10 @@ export function CropModal({ photo, onClose }: Props) {
     setSuggesting(true);
     setError('');
     try {
-      await api(`/photos/${photo.id}/crop-suggest`, { method: 'POST', body: '{}' });
+      await api(`/photos/${photo.id}/crop-suggest`, {
+        method: 'POST',
+        body: JSON.stringify({ provider: providerId, model }),
+      });
       const res = await api<{ suggestion: CropSuggestion | null }>(`/photos/${photo.id}/crop`);
       if (res.suggestion) {
         setSuggestion(res.suggestion);
@@ -215,6 +221,12 @@ export function CropModal({ photo, onClose }: Props) {
             <p className="mt-1 text-xs text-ink-soft">
               {suggestion ? `AI 建议：${suggestion.reasoning}` : '暂无 AI 建议，可手动裁剪或点击「生成 AI 建议」'}
             </p>
+            {suggestion && (suggestion.stale || (suggestion.warnings?.length ?? 0) > 0) && (
+              <p className="mt-1 border-l-2 border-line-soft pl-2 text-xs text-muted">
+                {suggestion.stale && <span className="mr-1">旧建议（{suggestion.model ?? '未知模型'}）</span>}
+                {suggestion.warnings?.length ? `⚠ ${suggestion.warnings.join('；')}` : ''}
+              </p>
+            )}
           </div>
           <button
             onClick={() => onClose(false)}
@@ -317,9 +329,14 @@ export function CropModal({ photo, onClose }: Props) {
 
         <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-3">
           {suggestion ? (
-            <button className="btn btn--sm" onClick={applySuggestion}>
-              <span>应用 AI 建议</span>
-            </button>
+            <>
+              <button className="btn btn--sm" onClick={applySuggestion}>
+                <span>应用 AI 建议</span>
+              </button>
+              <button className="btn btn--sm" onClick={() => void generateSuggestion()} disabled={suggesting}>
+                <span>{suggesting ? '生成中…' : '重新生成'}</span>
+              </button>
+            </>
           ) : (
             <button className="btn btn--sm" onClick={() => void generateSuggestion()} disabled={suggesting}>
               <span>{suggesting ? '生成中…' : '生成 AI 建议'}</span>

@@ -82,7 +82,7 @@ export function CaptionPanel({ sessionId, photoIds, onChanged }: Props) {
           <select
             value={style}
             onChange={(e) => setStyle(e.target.value as CaptionStyle)}
-            className="field mono w-auto py-1.5 text-[11px]"
+            className="field mono h-9 w-auto shrink-0 py-1.5 text-[11px]"
             aria-label="文案风格"
           >
             {STYLES.map((s) => (
@@ -95,10 +95,10 @@ export function CaptionPanel({ sessionId, photoIds, onChanged }: Props) {
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="补充说明（可选，如：三亚蜜月）"
-            className="field w-52"
+            className="field h-9 w-full min-w-0 sm:w-52"
           />
           <div className="flex-1" />
-          <button onClick={() => void generate()} disabled={busy} className="btn btn--solid btn--sm">
+          <button onClick={() => void generate()} disabled={busy} className="btn btn--solid btn--sm h-9 shrink-0">
             <span>{busy ? '生成中…' : items ? '重新生成' : '生成文案'}</span>
           </button>
         </div>
